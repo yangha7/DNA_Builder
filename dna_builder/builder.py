@@ -10,10 +10,17 @@ The building algorithm:
    to the template coordinates
 2. Strand I atoms are output first, then strand II atoms
 3. Templates are already in the helix frame at position 0
+4. 5' terminal O atoms are generated to complete the phosphate group
+
+Charge model:
+  Each nucleotide has one phosphate group with formal charge -1.
+  The 5' terminal phosphate gets an extra O (O5T) to complete the
+  PO4 group, ensuring -1 charge per nucleotide systematically.
+  Total charge = -(number of nucleotides) = -(2 * sequence_length)
 """
 
 import numpy as np
-from typing import List
+from typing import List, Optional
 from .fiber_data import (
     HELICAL_PARAMS, WC_COMPLEMENT, RESIDUE_NAMES,
     PURINE_BASES, PYRIMIDINE_BASES,
@@ -55,12 +62,10 @@ def _helical_screw(coords: np.ndarray, rise: float, twist_deg: float,
 
 
 def _template_to_atoms(template, coords, res_name, res_seq, chain_id,
-                       skip_phosphate=False, skip_extra=False) -> List[Atom]:
+                       skip_extra=False) -> List[Atom]:
     """Convert template + transformed coordinates to Atom list."""
     atoms = []
     for i, (atom_name, element, _, _, _) in enumerate(template):
-        if skip_phosphate and atom_name in ("P", "O1P", "O2P", "OP1", "OP2"):
-            continue
         if skip_extra and atom_name in ("OXT", "HTER"):
             continue
         atoms.append(Atom(
@@ -71,9 +76,56 @@ def _template_to_atoms(template, coords, res_name, res_seq, chain_id,
     return atoms
 
 
+def _find_atom_coords(atom_list: List[Atom], name: str) -> Optional[np.ndarray]:
+    """Find coordinates of a named atom in a list."""
+    for a in atom_list:
+        if a.name == name:
+            return np.array([a.x, a.y, a.z])
+    return None
+
+
+def _generate_5prime_terminal_O(atom_list: List[Atom],
+                                 res_name: str, res_seq: int,
+                                 chain_id: str) -> Optional[Atom]:
+    """
+    Generate the 5' terminal hydroxyl oxygen.
+
+    Positioned along the P -> O5' bond direction, on the opposite side
+    of P from O5'. This completes the PO4 group at the 5' end.
+
+    The O5T is placed at ~1.48 Å from P (standard P-O bond length),
+    in the direction opposite to O5' from P.
+    """
+    p_coord = _find_atom_coords(atom_list, "P")
+    o5_coord = _find_atom_coords(atom_list, "O5'")
+
+    if p_coord is None or o5_coord is None:
+        return None
+
+    # Direction from P to O5'
+    direction = o5_coord - p_coord
+    d = np.linalg.norm(direction)
+    if d < 0.01:
+        return None
+
+    # Place O5T on the opposite side of P from O5', at P-O bond length
+    p_o_bond = 1.48  # Å, standard P-O bond length
+    o5t_coord = p_coord - (direction / d) * p_o_bond
+
+    return Atom(
+        name="O5T", element="O",
+        x=o5t_coord[0], y=o5t_coord[1], z=o5t_coord[2],
+        residue_name=res_name, residue_seq=res_seq, chain_id=chain_id,
+    )
+
+
 def build_b_dna(sequence: str) -> List[Atom]:
     """
     Build B-form double-stranded DNA.
+
+    All nucleotides include the full phosphate group (P, O1P, O2P).
+    5' terminal residues get an extra O (O5T) to complete the PO4 group,
+    ensuring -1 formal charge per nucleotide.
 
     Parameters
     ----------
@@ -97,8 +149,9 @@ def build_b_dna(sequence: str) -> List[Atom]:
     comp_sequence = "".join(WC_COMPLEMENT[b] for b in sequence)
 
     all_atoms: List[Atom] = []
+    terminal_atoms: List[Atom] = []
 
-    # --- Strand I (5' -> 3'), all residues first ---
+    # --- Strand I (5' -> 3'), all residues ---
     for i in range(n_bp):
         base_s1 = sequence[i]
         template_s1 = B_STRAND1[base_s1]
@@ -106,10 +159,17 @@ def build_b_dna(sequence: str) -> List[Atom]:
         transformed_s1 = _helical_screw(coords_s1, rise, twist, i)
 
         res_name_s1 = RESIDUE_NAMES[base_s1]
-        skip_p_s1 = (i == 0)
-        all_atoms.extend(_template_to_atoms(
+        nuc_atoms = _template_to_atoms(
             template_s1, transformed_s1, res_name_s1, i + 1, "A",
-            skip_phosphate=skip_p_s1, skip_extra=True))
+            skip_extra=True)
+        all_atoms.extend(nuc_atoms)
+
+        # Generate 5' terminal O for first residue
+        if i == 0:
+            o5t = _generate_5prime_terminal_O(
+                nuc_atoms, res_name_s1, i + 1, "A")
+            if o5t:
+                terminal_atoms.append(o5t)
 
     # --- Strand II (3' -> 5', antiparallel), all residues ---
     for i in range(n_bp):
@@ -120,10 +180,20 @@ def build_b_dna(sequence: str) -> List[Atom]:
 
         res_name_s2 = RESIDUE_NAMES[base_s2]
         res_seq_s2 = n_bp - i
-        skip_p_s2 = (i == n_bp - 1)
-        all_atoms.extend(_template_to_atoms(
+        nuc_atoms = _template_to_atoms(
             template_s2, transformed_s2, res_name_s2, res_seq_s2, "B",
-            skip_phosphate=skip_p_s2, skip_extra=True))
+            skip_extra=True)
+        all_atoms.extend(nuc_atoms)
+
+        # Generate 5' terminal O for strand II's 5' end
+        if i == n_bp - 1:
+            o5t = _generate_5prime_terminal_O(
+                nuc_atoms, res_name_s2, res_seq_s2, "B")
+            if o5t:
+                terminal_atoms.append(o5t)
+
+    # Append terminal O atoms at the end (matching 3DNA convention)
+    all_atoms.extend(terminal_atoms)
 
     return all_atoms
 
@@ -152,9 +222,7 @@ def build_dna(sequence: str, form: str = "B") -> List[Atom]:
         return build_b_dna(sequence)
     elif form == "A":
         raise NotImplementedError(
-            "A-DNA builder requires Avogadro A-DNA templates. "
-            "Please generate an A-DNA structure in Avogadro and run extract_from_avogadro.py.")
+            "A-DNA builder requires templates from 3DNA A-form structures.")
     else:
         raise NotImplementedError(
-            "Z-DNA builder requires Avogadro Z-DNA templates. "
-            "Please generate a Z-DNA structure in Avogadro and run extract_from_avogadro.py.")
+            "Z-DNA builder requires templates from 3DNA Z-form structures.")
