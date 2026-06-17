@@ -25,6 +25,7 @@ from .fiber_data import (
     HELICAL_PARAMS, WC_COMPLEMENT, RESIDUE_NAMES,
     PURINE_BASES, PYRIMIDINE_BASES,
     B_STRAND1, B_STRAND2,
+    A_STRAND1, A_STRAND2,
 )
 
 
@@ -198,6 +199,90 @@ def build_b_dna(sequence: str) -> List[Atom]:
     return all_atoms
 
 
+def build_a_dna(sequence: str) -> List[Atom]:
+    """
+    Build A-form double-stranded DNA.
+
+    Uses nucleotide templates extracted from 3DNA fiber structures
+    (Colin's A-form XYZ files). Templates were extracted by:
+    1. Fitting the helical screw axis on ATATAT (RMSD 0.0009 Å)
+    2. Transforming to helix frame (axis along Z)
+    3. Unwinding each nucleotide to position 0
+    4. G/C base atoms obtained via Kabsch superposition onto A/T backbone
+
+    A-DNA parameters: rise = 2.548 Å, twist = 32.727° (11 bp/turn)
+
+    Parameters
+    ----------
+    sequence : str
+        Nucleotide sequence for strand I (5' to 3').
+
+    Returns
+    -------
+    List[Atom]
+        Complete list of atoms for both strands.
+    """
+    sequence = sequence.upper().strip()
+    if not all(b in "ATGC" for b in sequence):
+        raise ValueError(f"Invalid bases in sequence: {sequence}")
+
+    params = HELICAL_PARAMS["A"]
+    rise = params["rise"]
+    twist = params["twist"]
+    n_bp = len(sequence)
+
+    comp_sequence = "".join(WC_COMPLEMENT[b] for b in sequence)
+
+    all_atoms: List[Atom] = []
+    terminal_atoms: List[Atom] = []
+
+    # --- Strand I (5' -> 3'), all residues ---
+    for i in range(n_bp):
+        base_s1 = sequence[i]
+        template_s1 = A_STRAND1[base_s1]
+        coords_s1 = np.array([[a[2], a[3], a[4]] for a in template_s1])
+        transformed_s1 = _helical_screw(coords_s1, rise, twist, i)
+
+        res_name_s1 = RESIDUE_NAMES[base_s1]
+        nuc_atoms = _template_to_atoms(
+            template_s1, transformed_s1, res_name_s1, i + 1, "A",
+            skip_extra=True)
+        all_atoms.extend(nuc_atoms)
+
+        # Generate 5' terminal O for first residue
+        if i == 0:
+            o5t = _generate_5prime_terminal_O(
+                nuc_atoms, res_name_s1, i + 1, "A")
+            if o5t:
+                terminal_atoms.append(o5t)
+
+    # --- Strand II (3' -> 5', antiparallel), all residues ---
+    for i in range(n_bp):
+        base_s2 = comp_sequence[i]
+        template_s2 = A_STRAND2[base_s2]
+        coords_s2 = np.array([[a[2], a[3], a[4]] for a in template_s2])
+        transformed_s2 = _helical_screw(coords_s2, rise, twist, i)
+
+        res_name_s2 = RESIDUE_NAMES[base_s2]
+        res_seq_s2 = n_bp - i
+        nuc_atoms = _template_to_atoms(
+            template_s2, transformed_s2, res_name_s2, res_seq_s2, "B",
+            skip_extra=True)
+        all_atoms.extend(nuc_atoms)
+
+        # Generate 5' terminal O for strand II's 5' end
+        if i == n_bp - 1:
+            o5t = _generate_5prime_terminal_O(
+                nuc_atoms, res_name_s2, res_seq_s2, "B")
+            if o5t:
+                terminal_atoms.append(o5t)
+
+    # Append terminal O atoms at the end
+    all_atoms.extend(terminal_atoms)
+
+    return all_atoms
+
+
 def build_dna(sequence: str, form: str = "B") -> List[Atom]:
     """
     Build double-stranded DNA in the specified form.
@@ -221,8 +306,7 @@ def build_dna(sequence: str, form: str = "B") -> List[Atom]:
     if form == "B":
         return build_b_dna(sequence)
     elif form == "A":
-        raise NotImplementedError(
-            "A-DNA builder requires templates from 3DNA A-form structures.")
+        return build_a_dna(sequence)
     else:
         raise NotImplementedError(
             "Z-DNA builder requires templates from 3DNA Z-form structures.")
