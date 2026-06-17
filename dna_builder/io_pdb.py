@@ -3,23 +3,7 @@ PDB file output for DNA structures.
 
 Writes atoms in standard PDB ATOM record format with proper column alignment,
 chain IDs, residue numbering, and element symbols.
-
-PDB format specification:
-  Columns  1- 6: Record type "ATOM  "
-  Columns  7-11: Atom serial number
-  Columns 13-16: Atom name
-  Column  17:    Alternate location indicator
-  Columns 18-20: Residue name
-  Column  22:    Chain ID
-  Columns 23-26: Residue sequence number
-  Column  27:    Code for insertion of residues
-  Columns 31-38: X coordinate (8.3)
-  Columns 39-46: Y coordinate (8.3)
-  Columns 47-54: Z coordinate (8.3)
-  Columns 55-60: Occupancy (6.2)
-  Columns 61-66: Temperature factor (6.2)
-  Columns 77-78: Element symbol
-  Columns 79-80: Charge
+Also supports XYZ and CML output formats.
 """
 
 from typing import List, TextIO
@@ -28,38 +12,17 @@ from .builder import Atom
 
 
 def format_atom_name(name: str, element: str) -> str:
-    """
-    Format atom name for PDB columns 13-16.
-
-    PDB convention:
-    - 1-character element symbols start in column 14 (right-justified in 13-14)
-    - 2-character element symbols start in column 13
-    - Atom name is left-justified in remaining columns
-
-    For DNA atoms, most are 1-character elements (C, N, O, P, H).
-    """
+    """Format atom name for PDB columns 13-16."""
     if len(name) >= 4:
         return name[:4]
     if len(element) == 1:
-        # Right-justify element in columns 13-14, then atom name continues
         return f" {name:<3s}"
     else:
         return f"{name:<4s}"
 
 
 def write_pdb(atoms: List[Atom], output, title: str = "DNA structure"):
-    """
-    Write atoms to a PDB file.
-
-    Parameters
-    ----------
-    atoms : List[Atom]
-        List of atoms to write.
-    output : str or file-like
-        Output filename (str) or file-like object.
-    title : str
-        Title for the TITLE record.
-    """
+    """Write atoms to a PDB file."""
     if isinstance(output, str):
         with open(output, "w") as f:
             _write_pdb_records(atoms, f, title)
@@ -74,17 +37,18 @@ def _write_pdb_records(atoms: List[Atom], f: TextIO, title: str):
     f.write(f"REMARK    Using canonical fiber diffraction coordinates\n")
 
     prev_chain = None
+    prev_atom = None
     serial = 0
 
     for atom in atoms:
         serial += 1
 
         # Write TER record between chains
-        if prev_chain is not None and atom.chain_id != prev_chain:
+        if prev_chain is not None and atom.chain_id != prev_chain and prev_atom is not None:
             f.write(f"TER   {serial:>5d}      "
-                    f"{atoms[serial-2].residue_name:>3s} "
+                    f"{prev_atom.residue_name:>3s} "
                     f"{prev_chain}"
-                    f"{atoms[serial-2].residue_seq:>4d}\n")
+                    f"{prev_atom.residue_seq:>4d}\n")
             serial += 1
 
         atom_name = format_atom_name(atom.name, atom.element)
@@ -100,32 +64,21 @@ def _write_pdb_records(atoms: List[Atom], f: TextIO, title: str):
         )
         f.write(line)
         prev_chain = atom.chain_id
+        prev_atom = atom
 
     # Final TER
-    serial += 1
-    if atoms:
-        last = atoms[-1]
+    if prev_atom is not None:
+        serial += 1
         f.write(f"TER   {serial:>5d}      "
-                f"{last.residue_name:>3s} "
-                f"{last.chain_id}"
-                f"{last.residue_seq:>4d}\n")
+                f"{prev_atom.residue_name:>3s} "
+                f"{prev_atom.chain_id}"
+                f"{prev_atom.residue_seq:>4d}\n")
 
     f.write("END\n")
 
 
 def write_xyz(atoms: List[Atom], output, comment: str = "DNA structure"):
-    """
-    Write atoms in XYZ format.
-
-    Parameters
-    ----------
-    atoms : List[Atom]
-        List of atoms to write.
-    output : str or file-like
-        Output filename or file-like object.
-    comment : str
-        Comment line.
-    """
+    """Write atoms in XYZ format."""
     if isinstance(output, str):
         with open(output, "w") as f:
             _write_xyz_records(atoms, f, comment)
@@ -143,21 +96,7 @@ def _write_xyz_records(atoms: List[Atom], f: TextIO, comment: str):
 
 
 def write_cml(atoms: List[Atom], output, title: str = "DNA structure"):
-    """
-    Write atoms in Chemical Markup Language (CML) format.
-
-    This is a basic CML output with atom coordinates. Bond information
-    is not included (would require bond detection).
-
-    Parameters
-    ----------
-    atoms : List[Atom]
-        List of atoms to write.
-    output : str or file-like
-        Output filename or file-like object.
-    title : str
-        Molecule title.
-    """
+    """Write atoms in Chemical Markup Language (CML) format."""
     if isinstance(output, str):
         with open(output, "w") as f:
             _write_cml_records(atoms, f, title)
