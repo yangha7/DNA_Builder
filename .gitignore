@@ -8,3 +8,4 @@ build/
 *.xyz
 *.cml
 .DS_Store
+__pycache__/

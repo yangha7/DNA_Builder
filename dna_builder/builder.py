@@ -20,12 +20,15 @@ Charge model:
 """
 
 import numpy as np
+import warnings
 from typing import List, Optional
 from .fiber_data import (
     HELICAL_PARAMS, WC_COMPLEMENT, RESIDUE_NAMES,
     PURINE_BASES, PYRIMIDINE_BASES,
     B_STRAND1, B_STRAND2,
     A_STRAND1, A_STRAND2,
+    Z_STRAND1_POS1, Z_STRAND1_POS2,
+    Z_STRAND2_POS1, Z_STRAND2_POS2,
 )
 
 
@@ -283,6 +286,131 @@ def build_a_dna(sequence: str) -> List[Atom]:
     return all_atoms
 
 
+
+def build_z_dna(sequence: str) -> List[Atom]:
+    """
+    Build Z-form double-stranded DNA.
+
+    Z-DNA is a left-handed helix with a dinucleotide repeat unit.
+    The canonical Z-DNA sequence alternates purine-pyrimidine (e.g., GCGCGC).
+
+    The building algorithm uses a dinucleotide repeat:
+    - Even positions (0,2,4...): purine in syn conformation (POS1 templates)
+    - Odd positions (1,3,5...): pyrimidine in anti conformation (POS2 templates)
+    - The helical screw operates on dinucleotide pairs:
+      dinuc_index = position // 2
+      cumulative_twist = dinuc_index * twist_dinuc
+      cumulative_rise = dinuc_index * rise_dinuc
+
+    Both nucleotides within a dinucleotide share the same screw transformation,
+    preserving their relative geometry from the template.
+
+    Parameters
+    ----------
+    sequence : str
+        Nucleotide sequence for strand I (5' to 3').
+        Must have even length. Canonical Z-DNA alternates pur-pyr.
+
+    Returns
+    -------
+    List[Atom]
+        Complete list of atoms for both strands.
+    """
+    sequence = sequence.upper().strip()
+    if not all(b in "ATGC" for b in sequence):
+        raise ValueError(f"Invalid bases in sequence: {sequence}")
+    if len(sequence) % 2 != 0:
+        raise ValueError("Z-DNA sequence must have even length (dinucleotide repeat)")
+
+    # Check for canonical alternating purine-pyrimidine pattern
+    is_canonical = all(
+        (sequence[i] in PURINE_BASES) == (i % 2 == 0)
+        for i in range(len(sequence))
+    )
+    if not is_canonical:
+        warnings.warn(
+            f"Z-DNA sequence '{sequence}' does not alternate purine-pyrimidine. "
+            "Non-canonical Z-DNA may have distorted backbone geometry.",
+            stacklevel=2,
+        )
+
+    params = HELICAL_PARAMS["Z"]
+    rise_dinuc = params["rise_dinuc"]
+    twist_dinuc = params["twist_dinuc"]
+    n_bp = len(sequence)
+
+    comp_sequence = "".join(WC_COMPLEMENT[b] for b in sequence)
+
+    all_atoms: List[Atom] = []
+    terminal_atoms: List[Atom] = []
+
+    # --- Strand I (5' -> 3'), all residues ---
+    for i in range(n_bp):
+        base_s1 = sequence[i]
+        is_pos2 = i % 2
+        dinuc_idx = i // 2
+
+        # Select template based on position within dinucleotide
+        if is_pos2:
+            template_s1 = Z_STRAND1_POS2[base_s1]
+        else:
+            template_s1 = Z_STRAND1_POS1[base_s1]
+
+        coords_s1 = np.array([[a[2], a[3], a[4]] for a in template_s1])
+        # Apply dinucleotide screw (same for both positions in a dinucleotide)
+        cum_twist = dinuc_idx * twist_dinuc
+        cum_rise = dinuc_idx * rise_dinuc
+        transformed_s1 = _helical_screw(coords_s1, cum_rise, cum_twist, 1)
+
+        res_name_s1 = RESIDUE_NAMES[base_s1]
+        nuc_atoms = _template_to_atoms(
+            template_s1, transformed_s1, res_name_s1, i + 1, "A",
+            skip_extra=True)
+        all_atoms.extend(nuc_atoms)
+
+        # Generate 5' terminal O for first residue
+        if i == 0:
+            o5t = _generate_5prime_terminal_O(
+                nuc_atoms, res_name_s1, i + 1, "A")
+            if o5t:
+                terminal_atoms.append(o5t)
+
+    # --- Strand II (3' -> 5', antiparallel), all residues ---
+    for i in range(n_bp):
+        base_s2 = comp_sequence[i]
+        is_pos2 = i % 2
+        dinuc_idx = i // 2
+
+        # Select template based on position within dinucleotide
+        if is_pos2:
+            template_s2 = Z_STRAND2_POS2[base_s2]
+        else:
+            template_s2 = Z_STRAND2_POS1[base_s2]
+
+        coords_s2 = np.array([[a[2], a[3], a[4]] for a in template_s2])
+        cum_twist = dinuc_idx * twist_dinuc
+        cum_rise = dinuc_idx * rise_dinuc
+        transformed_s2 = _helical_screw(coords_s2, cum_rise, cum_twist, 1)
+
+        res_name_s2 = RESIDUE_NAMES[base_s2]
+        res_seq_s2 = n_bp - i
+        nuc_atoms = _template_to_atoms(
+            template_s2, transformed_s2, res_name_s2, res_seq_s2, "B",
+            skip_extra=True)
+        all_atoms.extend(nuc_atoms)
+
+        # Generate 5' terminal O for strand II's 5' end
+        if i == n_bp - 1:
+            o5t = _generate_5prime_terminal_O(
+                nuc_atoms, res_name_s2, res_seq_s2, "B")
+            if o5t:
+                terminal_atoms.append(o5t)
+
+    # Append terminal O atoms at the end (matching 3DNA convention)
+    all_atoms.extend(terminal_atoms)
+
+    return all_atoms
+
 def build_dna(sequence: str, form: str = "B") -> List[Atom]:
     """
     Build double-stranded DNA in the specified form.
@@ -308,5 +436,4 @@ def build_dna(sequence: str, form: str = "B") -> List[Atom]:
     elif form == "A":
         return build_a_dna(sequence)
     else:
-        raise NotImplementedError(
-            "Z-DNA builder requires templates from 3DNA Z-form structures.")
+        return build_z_dna(sequence)
