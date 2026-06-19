@@ -531,36 +531,24 @@ def _build_sugar_and_backbone_from_c1(c1_pos, o4_pos, c2_pos,
     nuc["C4'"] = place_atom(d_c3_c4, a_c2_c3_c4, nu2,
                             nuc["C3'"], nuc["C2'"], nuc["C1'"])
 
-    # O3' from C3', angle C4'-C3'-O3', dihedral C5'-C4'-C3'-O3' = delta
-    # But C5' isn't placed yet. Use C2'-C3'-O3' with dihedral from C4'
+    # O3' from C3', angle C4'-C3'-O3'
+    # Dihedral: C2'-C4'-C3'-O3' = 115.9 (extracted from Colin's structures)
     d_c3_o3 = bl["C3'-O3'"]
     a_c4_c3_o3 = ba.get("C4'-C3'-O3'", 108.9)
-    delta = ta.get("delta", -143.4)
-    # delta = C5'-C4'-C3'-O3', but C5' isn't placed yet
-    # Use: dihedral C2'-C3'-C4' -> O3' relative to C2'
-    # Actually, place O3' using C4' as the bonded-to-bonded reference
-    # O3' from C3', angle C4'-C3'-O3', dihedral C2'-C4'-C3'-O3'
-    dih_c5_c4_c3_c2 = ta.get("C5'-C4'-C3'-C2'", 100.7)
-    # O3' is placed relative to C4' and C2'
-    # Use the delta torsion: C5'-C4'-C3'-O3'
-    # Since C5' isn't placed, use the relationship:
-    # dihedral(C2', C4', C3', O3') = delta - dih_c5_c4_c3_c2 + 360 (mod 360)
-    # Actually simpler: place O3' from C3' with C4' as ref2 and C2' as ref3
-    nuc["O3'"] = place_atom(d_c3_o3, a_c4_c3_o3, delta,
+    # place_atom(d, theta, phi, ref1=C3', ref2=C4', ref3=C2')
+    # -> dihedral is C2'-C4'-C3'-O3'
+    dih_c2_c4_c3_o3 = 115.9  # extracted from Colin's B-DNA
+    nuc["O3'"] = place_atom(d_c3_o3, a_c4_c3_o3, dih_c2_c4_c3_o3,
                             nuc["C3'"], nuc["C4'"], nuc["C2'"])
 
-    # C5' from C4', angle C3'-C4'-C5' (= C5'-C4'-C3'), dihedral from O4'
+    # C5' from C4', angle C3'-C4'-C5'
+    # Dihedral: O4'-C3'-C4'-C5' = 123.8 (extracted from Colin's structures)
     d_c4_c5 = bl["C5'-C4'"]
     a_c3_c4_c5 = ba.get("C5'-C4'-C3'", 115.8)
-    # Dihedral: O4'-C3'-C4'-C5' or use the extracted dihedral
-    # gamma = O5'-C5'-C4'-C3', but O5' isn't placed yet
-    # Use: dihedral O3'-C3'-C4'-C5' (related to delta)
-    # Place C5' using O4' as reference
-    dih_o5_c5_c4_o4 = ta.get("O5'-C5'-C4'-O4'", 88.1)
-    a_o4_c4_c5 = ba.get("C5'-C4'-O4'", 112.4)
-    # Place C5' from C4', angle O4'-C4'-C5', dihedral C3'-O4'-C4'-C5'
-    # Actually, use C3' as ref3: dihedral C3'-C4'-C5' with O4' as ref
-    nuc["C5'"] = place_atom(d_c4_c5, a_c3_c4_c5, -dih_o5_c5_c4_o4,
+    # place_atom(d, theta, phi, ref1=C4', ref2=C3', ref3=O4')
+    # -> dihedral is O4'-C3'-C4'-C5'
+    dih_o4_c3_c4_c5 = 123.8  # extracted from Colin's B-DNA
+    nuc["C5'"] = place_atom(d_c4_c5, a_c3_c4_c5, dih_o4_c3_c4_c5,
                             nuc["C4'"], nuc["C3'"], nuc["O4'"])
 
     # O5' from C5', angle C4'-C5'-O5', dihedral from C3'
