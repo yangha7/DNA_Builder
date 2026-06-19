@@ -279,6 +279,52 @@ INTERNAL_COORDS = {
     "Z": {"pos1": Z_DNA_POS1_PARAMS, "pos2": Z_DNA_POS2_PARAMS},
 }
 
+# =============================================================================
+# Cross-strand Z-matrix parameters for Watson-Crick base pairing
+# =============================================================================
+# These define how to place strand 2's C1' (and sugar frame) relative to
+# strand 1's base atoms using Z-matrix operations.
+#
+# For purines (A, G) on strand 1: use N1 as the H-bond reference
+#   C1'(s2) placed from: N1(s1), angle ref C2(s1), dihedral ref C6(s1)
+#
+# For pyrimidines (T, C) on strand 1: use N3 as the H-bond reference
+#   C1'(s2) placed from: N3(s1), angle ref C2(s1), dihedral ref C4(s1)
+#
+# Then O4'(s2) and C2'(s2) are placed from C1'(s2) using the H-bond
+# atom and its neighbor as references.
+
+B_CROSS_STRAND = {
+    # Purine on s1 -> pyrimidine on s2
+    # ref_atom = N1(s1), angle_ref = C2(s1), dihedral_ref = C6(s1)
+    "A->T": {
+        "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
+        "C1'_dist": 6.115, "C1'_angle": 96.1, "C1'_dihedral": -175.0,
+        "O4'_angle": 109.8, "O4'_dihedral": 98.8,   # from ref_atom-C1'-O4'
+        "C2'_angle": 140.6, "C2'_dihedral": -109.9,  # from ref_atom-C1'-C2'
+    },
+    "G->C": {
+        "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
+        "C1'_dist": 6.112, "C1'_angle": 95.0, "C1'_dihedral": -174.9,
+        "O4'_angle": 109.9, "O4'_dihedral": 98.7,
+        "C2'_angle": 140.8, "C2'_dihedral": -108.8,
+    },
+    # Pyrimidine on s1 -> purine on s2
+    # ref_atom = N3(s1), angle_ref = C2(s1), dihedral_ref = C4(s1)
+    "T->A": {
+        "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
+        "C1'_dist": 7.976, "C1'_angle": 108.6, "C1'_dihedral": -175.9,
+        "O4'_angle": 108.8, "O4'_dihedral": 97.7,
+        "C2'_angle": 142.0, "C2'_dihedral": -109.9,
+    },
+    "C->G": {
+        "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
+        "C1'_dist": 7.911, "C1'_angle": 111.4, "C1'_dihedral": -175.8,
+        "O4'_angle": 108.9, "O4'_dihedral": 97.4,
+        "C2'_angle": 142.0, "C2'_dihedral": -109.9,
+    },
+}
+
 # Base atom templates (relative coordinates from first structure)
 # Used to place base atoms relative to the sugar
 

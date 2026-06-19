@@ -23,6 +23,7 @@ from .internal_coords import (
     Z_DNA_POS1_PARAMS, Z_DNA_POS2_PARAMS,
     INTERNAL_COORDS,
     B_BASE_TEMPLATES, A_BASE_TEMPLATES, Z_BASE_TEMPLATES,
+    B_CROSS_STRAND,
 )
 from .fiber_data import (
     HELICAL_PARAMS, WC_COMPLEMENT, RESIDUE_NAMES,
@@ -67,7 +68,7 @@ def place_atom(d: float, theta: float, phi: float,
         Position of the new atom.
     """
     theta_rad = np.radians(theta)
-    phi_rad = np.radians(phi)
+    phi_rad = np.radians(-phi)  # negate to match standard dihedral convention
 
     # Build local coordinate system at ref1
     # bc = unit vector from ref2 to ref1
@@ -398,23 +399,23 @@ def insert_base(base_type: str, nuc: Dict[str, np.ndarray],
 
 
 # =============================================================================
-# Strand II construction
+# Strand II construction — cross-strand Z-matrix method
 # =============================================================================
 
 def build_strand2_from_templates(strand1_residues: List[Dict[str, np.ndarray]],
                                   sequence: str, form: str = "B") -> List[Dict[str, np.ndarray]]:
     """
-    Build strand II by applying the helical dyad symmetry.
+    Build strand II using cross-strand Z-matrix placement.
 
-    For B-DNA and A-DNA, the dyad axis is perpendicular to the helix axis
-    and passes through the center of each base pair. Strand II is generated
-    by rotating strand I by 180° around this dyad axis.
+    For each base pair position i:
+    1. Use strand 1's base H-bond atoms to place strand 2's C1' via Z-matrix
+    2. Place O4' and C2' relative to C1' using cross-strand references
+    3. Build the rest of the sugar ring from C1'/O4'/C2'
+    4. Grow the backbone (C3', O3', C4', C5', O5', P) outward from the sugar
+    5. Insert the complementary base
 
-    For Z-DNA, the dinucleotide repeat requires special handling.
-
-    This function uses the v1 template approach for strand II: it builds
-    strand I using Z-matrix, then uses the known helical parameters to
-    generate strand II positions.
+    The cross-strand Z-matrix parameters are extracted from Colin's 3DNA
+    structures and stored in B_CROSS_STRAND.
 
     Parameters
     ----------
@@ -428,145 +429,171 @@ def build_strand2_from_templates(strand1_residues: List[Dict[str, np.ndarray]],
     Returns
     -------
     list of dict
-        Strand II residue atom positions (in 5'→3' order of strand II,
-        which is 3'→5' relative to strand I).
+        Strand II residue atom positions. s2[i] pairs with s1[i]
+        (antiparallel: strand II runs 3'→5' relative to strand I).
     """
     n_bp = len(sequence)
     comp_sequence = "".join(WC_COMPLEMENT[b] for b in sequence)
 
-    if form in ("B", "A"):
-        return _build_strand2_helical(strand1_residues, sequence, comp_sequence, form)
-    else:
-        return _build_strand2_z_dna(strand1_residues, sequence, comp_sequence)
-
-
-def _build_strand2_helical(strand1_residues, sequence, comp_sequence, form):
-    """Build strand II for B-DNA or A-DNA using helical symmetry."""
-    params = HELICAL_PARAMS[form]
-    rise = params["rise"]
-    twist = params["twist"]
-    n_bp = len(sequence)
-
-    # The dyad operation for a helix:
-    # For base pair at step i, the dyad axis is in the xy-plane
-    # at angle (twist * i / 2) from x-axis.
-    # Strand II atom at step i = rotate strand I atom by 180° around dyad axis
-    # then translate by rise * i along z.
-
-    # But we need to figure out the dyad axis from the built structure.
-    # Alternative approach: use the helical screw relationship.
-    # Strand II residue at position i pairs with strand I residue at position i.
-    # The strand II residue is related to strand I by a 180° rotation around
-    # the dyad axis plus the helical parameters.
-
-    # Simpler approach: build strand II backbone independently using the same
-    # internal coordinates but with the complementary sequence, and position
-    # it using the known helical relationship.
-
-    # For now, use the dyad symmetry approach:
-    # 1. Find the helix axis (should be along Z for our built structure)
-    # 2. For each base pair, apply the dyad rotation
-
-    # The helix axis is along Z (by construction).
-    # The dyad axis for step i is perpendicular to Z, at angle twist*i/2.
-    # Dyad rotation = 180° around this axis.
-
-    # For the first base pair (i=0), the dyad axis is along x.
-    # We need to find the correct dyad axis orientation from the structure.
-
-    # Actually, let's use a more robust approach:
-    # Build strand II using the same grow_backbone but with reversed parameters,
-    # then align it using the Watson-Crick base pair geometry.
-
-    # Most robust: use the template-based strand II from fiber_data
-    # and superpose it onto our Z-matrix strand I.
-
-    # For now, let's use the direct dyad approach with the helix axis along Z.
-    # The dyad for step 0 needs to be determined from the structure.
-
-    # Find the center of the first base pair
-    # C1' of strand I residue 0 should be roughly at the expected position
-    s1_c1_0 = strand1_residues[0]["C1'"]
-
-    # The dyad axis passes through the helix axis (Z) and is perpendicular to it.
-    # For step i, the dyad axis direction in xy-plane is at angle:
-    #   phi_dyad = twist * i + phi_0
-    # where phi_0 is the initial orientation.
-
-    # Determine phi_0 from the first residue's C1' position
-    phi_0 = np.arctan2(s1_c1_0[1], s1_c1_0[0])
-    # The dyad axis bisects the angle between strand I and strand II C1' positions
-    # For B-DNA, the C1'-C1' vector is roughly perpendicular to the dyad axis
-
     strand2_residues = []
 
     for i in range(n_bp):
-        # Dyad axis direction for step i
-        dyad_angle = np.radians(twist * i) + phi_0 + np.pi / 2  # perpendicular to C1' direction
-        dyad_dir = np.array([np.cos(dyad_angle), np.sin(dyad_angle), 0.0])
-
-        # Dyad point on helix axis at height rise * i
-        dyad_point = np.array([0.0, 0.0, rise * i])
-
-        # Apply 180° rotation around dyad axis through dyad_point
+        s1_base = sequence[i]
+        s2_base = comp_sequence[i]
         s1_nuc = strand1_residues[i]
-        s2_nuc = {}
 
-        for atom_name, pos in s1_nuc.items():
-            s2_nuc[atom_name] = _rotate_180_around_axis(pos, dyad_point, dyad_dir)
+        # Get cross-strand parameters
+        bp_key = "{}->{}".format(s1_base, s2_base)
+        cs = B_CROSS_STRAND[bp_key]
+
+        # Reference atoms on strand 1's base
+        ref_atom = cs["ref_atom"]      # N1 for purines, N3 for pyrimidines
+        angle_ref = cs["angle_ref"]    # C2
+        dihedral_ref = cs["dihedral_ref"]  # C6 for purines, C4 for pyrimidines
+
+        ref1 = s1_nuc[ref_atom]
+        ref2 = s1_nuc[angle_ref]
+        ref3 = s1_nuc[dihedral_ref]
+
+        # Step 1: Place C1' of strand 2 using cross-strand Z-matrix
+        s2_c1 = place_atom(cs["C1'_dist"], cs["C1'_angle"], cs["C1'_dihedral"],
+                           ref1, ref2, ref3)
+
+        # Step 2: Place O4' from C1', using strand 1 H-bond atom as reference
+        params = _get_params(form, i)
+        bl = params["bond_lengths"]
+
+        d_c1_o4 = bl["C1'-O4'"]
+        s2_o4 = place_atom(d_c1_o4, cs["O4'_angle"], cs["O4'_dihedral"],
+                           s2_c1, ref1, ref2)
+
+        # Step 3: Place C2' from C1'
+        d_c1_c2 = bl["C2'-C1'"]
+        s2_c2 = place_atom(d_c1_c2, cs["C2'_angle"], cs["C2'_dihedral"],
+                           s2_c1, ref1, ref2)
+
+        # Step 4: Build the rest of the sugar and backbone
+        s2_nuc = _build_sugar_and_backbone_from_c1(
+            s2_c1, s2_o4, s2_c2, form, i, params)
 
         strand2_residues.append(s2_nuc)
 
-    # Strand II is in 3'→5' order relative to strand I pairing
-    # We need to reverse it to get 5'→3' of strand II
-    # Actually, the residues are already paired: s2[i] pairs with s1[i]
-    # But strand II runs antiparallel, so s2[0] is the 3' end of strand II
+    # Connect backbone: for strand 2, the chain runs in the opposite direction
+    # s2[0] pairs with s1[0] but is the 3' end of strand 2
+    # s2[n-1] pairs with s1[n-1] and is the 5' end of strand 2
+    # The backbone connectivity is: s2[n-1] -> s2[n-2] -> ... -> s2[0]
+    # So O3' of s2[i] connects to P of s2[i-1] (reversed direction)
 
     return strand2_residues
 
 
-def _build_strand2_z_dna(strand1_residues, sequence, comp_sequence):
-    """Build strand II for Z-DNA using dinucleotide dyad symmetry."""
-    params = HELICAL_PARAMS["Z"]
-    rise_dinuc = params["rise_dinuc"]
-    twist_dinuc = params["twist_dinuc"]
-    n_bp = len(sequence)
+def _build_sugar_and_backbone_from_c1(c1_pos, o4_pos, c2_pos,
+                                       form, position, params):
+    """
+    Build sugar ring and backbone outward from C1', O4', C2'.
 
-    s1_c1_0 = strand1_residues[0]["C1'"]
-    phi_0 = np.arctan2(s1_c1_0[1], s1_c1_0[0])
+    Given the sugar frame (C1', O4', C2'), build:
+    - C3' from C2' (using C1' as reference)
+    - C4' from C3' (using C2' as reference)
+    - O3' from C3' (branch)
+    - C5' from C4' (branch)
+    - O5' from C5' (branch)
+    - P from O5' (branch)
+    - OP1, OP2 from P (branches)
+    """
+    bl = params["bond_lengths"]
+    ba = params["bond_angles"]
+    ta = params["torsion_angles"]
 
-    strand2_residues = []
+    nuc = {}
+    nuc["C1'"] = c1_pos
+    nuc["O4'"] = o4_pos
+    nuc["C2'"] = c2_pos
 
-    for i in range(n_bp):
-        dinuc_idx = i // 2
-        cum_twist = dinuc_idx * twist_dinuc
-        cum_rise = dinuc_idx * rise_dinuc
+    # C3' from C2', angle C1'-C2'-C3', dihedral O4'-C1'-C2'-C3'
+    d_c2_c3 = bl["C3'-C2'"]
+    a_c1_c2_c3 = ba.get("C1'-C2'-C3'", 96.6)
+    # Use endocyclic torsion: O4'-C1'-C2'-C3' (nu1)
+    # nu1 can be derived from sugar pucker
+    sp = params["sugar_pucker"]
+    P_pseudo = sp.get("P", -26.1)
+    tau_m = sp.get("tau_m", 44.8)
+    # nu1 = tau_m * cos(P - 144°)  [Altona-Sundaralingam]
+    nu1 = tau_m * np.cos(np.radians(P_pseudo - 144.0))
+    nuc["C3'"] = place_atom(d_c2_c3, a_c1_c2_c3, nu1,
+                            nuc["C2'"], nuc["C1'"], nuc["O4'"])
 
-        dyad_angle = np.radians(cum_twist) + phi_0 + np.pi / 2
-        dyad_dir = np.array([np.cos(dyad_angle), np.sin(dyad_angle), 0.0])
-        dyad_point = np.array([0.0, 0.0, cum_rise])
+    # C4' from C3', angle C2'-C3'-C4', dihedral C1'-C2'-C3'-C4'
+    d_c3_c4 = bl["C4'-C3'"]
+    a_c2_c3_c4 = ba.get("C2'-C3'-C4'", 104.7)
+    # nu2 = tau_m * cos(P)
+    nu2 = tau_m * np.cos(np.radians(P_pseudo))
+    nuc["C4'"] = place_atom(d_c3_c4, a_c2_c3_c4, nu2,
+                            nuc["C3'"], nuc["C2'"], nuc["C1'"])
 
-        s1_nuc = strand1_residues[i]
-        s2_nuc = {}
+    # O3' from C3', angle C4'-C3'-O3', dihedral C5'-C4'-C3'-O3' = delta
+    # But C5' isn't placed yet. Use C2'-C3'-O3' with dihedral from C4'
+    d_c3_o3 = bl["C3'-O3'"]
+    a_c4_c3_o3 = ba.get("C4'-C3'-O3'", 108.9)
+    delta = ta.get("delta", -143.4)
+    # delta = C5'-C4'-C3'-O3', but C5' isn't placed yet
+    # Use: dihedral C2'-C3'-C4' -> O3' relative to C2'
+    # Actually, place O3' using C4' as the bonded-to-bonded reference
+    # O3' from C3', angle C4'-C3'-O3', dihedral C2'-C4'-C3'-O3'
+    dih_c5_c4_c3_c2 = ta.get("C5'-C4'-C3'-C2'", 100.7)
+    # O3' is placed relative to C4' and C2'
+    # Use the delta torsion: C5'-C4'-C3'-O3'
+    # Since C5' isn't placed, use the relationship:
+    # dihedral(C2', C4', C3', O3') = delta - dih_c5_c4_c3_c2 + 360 (mod 360)
+    # Actually simpler: place O3' from C3' with C4' as ref2 and C2' as ref3
+    nuc["O3'"] = place_atom(d_c3_o3, a_c4_c3_o3, delta,
+                            nuc["C3'"], nuc["C4'"], nuc["C2'"])
 
-        for atom_name, pos in s1_nuc.items():
-            s2_nuc[atom_name] = _rotate_180_around_axis(pos, dyad_point, dyad_dir)
+    # C5' from C4', angle C3'-C4'-C5' (= C5'-C4'-C3'), dihedral from O4'
+    d_c4_c5 = bl["C5'-C4'"]
+    a_c3_c4_c5 = ba.get("C5'-C4'-C3'", 115.8)
+    # Dihedral: O4'-C3'-C4'-C5' or use the extracted dihedral
+    # gamma = O5'-C5'-C4'-C3', but O5' isn't placed yet
+    # Use: dihedral O3'-C3'-C4'-C5' (related to delta)
+    # Place C5' using O4' as reference
+    dih_o5_c5_c4_o4 = ta.get("O5'-C5'-C4'-O4'", 88.1)
+    a_o4_c4_c5 = ba.get("C5'-C4'-O4'", 112.4)
+    # Place C5' from C4', angle O4'-C4'-C5', dihedral C3'-O4'-C4'-C5'
+    # Actually, use C3' as ref3: dihedral C3'-C4'-C5' with O4' as ref
+    nuc["C5'"] = place_atom(d_c4_c5, a_c3_c4_c5, -dih_o5_c5_c4_o4,
+                            nuc["C4'"], nuc["C3'"], nuc["O4'"])
 
-        strand2_residues.append(s2_nuc)
+    # O5' from C5', angle C4'-C5'-O5', dihedral from C3'
+    d_c5_o5 = bl["O5'-C5'"]
+    a_c4_c5_o5 = ba.get("O5'-C5'-C4'", 110.0)
+    gamma = ta.get("gamma", -31.1)
+    # gamma = O5'-C5'-C4'-C3'
+    nuc["O5'"] = place_atom(d_c5_o5, a_c4_c5_o5, gamma,
+                            nuc["C5'"], nuc["C4'"], nuc["C3'"])
 
-    return strand2_residues
+    # P from O5', angle C5'-O5'-P, dihedral from C4'
+    d_o5_p = bl["P-O5'"]
+    a_c5_o5_p = ba.get("P-O5'-C5'", 119.0)
+    beta = ta.get("beta", -136.3)
+    # beta = P-O5'-C5'-C4'
+    nuc["P"] = place_atom(d_o5_p, a_c5_o5_p, beta,
+                          nuc["O5'"], nuc["C5'"], nuc["C4'"])
 
+    # OP1 from P
+    d_p_op1 = bl["P-O1P"]
+    a_o5_p_op1 = ba.get("O1P-P-O5'", 109.6)
+    dih_op1 = ta.get("C5'-O5'-P-O1P", -85.9)
+    nuc["O1P"] = place_atom(d_p_op1, a_o5_p_op1, dih_op1,
+                            nuc["P"], nuc["O5'"], nuc["C5'"])
 
-def _rotate_180_around_axis(point: np.ndarray, axis_point: np.ndarray,
-                             axis_dir: np.ndarray) -> np.ndarray:
-    """Rotate a point 180° around an axis defined by a point and direction."""
-    # Translate so axis passes through origin
-    p = point - axis_point
-    # 180° rotation around axis_dir: R = 2 * (n ⊗ n) - I
-    n = axis_dir / np.linalg.norm(axis_dir)
-    # Rodrigues' formula for 180°: R*p = 2*(n·p)*n - p
-    rotated = 2.0 * np.dot(n, p) * n - p
-    return rotated + axis_point
+    # OP2 from P
+    d_p_op2 = bl["P-O2P"]
+    a_o5_p_op2 = ba.get("O2P-P-O5'", 109.6)
+    dih_op2 = ta.get("C5'-O5'-P-O2P", 145.6)
+    nuc["O2P"] = place_atom(d_p_op2, a_o5_p_op2, dih_op2,
+                            nuc["P"], nuc["O5'"], nuc["C5'"])
+
+    return nuc
 
 
 # =============================================================================
@@ -754,27 +781,15 @@ def _build_dna_v2(sequence: str, form: str) -> List[Atom]:
         base_atoms = insert_base(base, s1_backbone[i], form, i)
         s1_backbone[i].update(base_atoms)
 
-    # Step 3: Build strand II using helical symmetry
+    # Step 3: Build strand II using cross-strand Z-matrix
+    # s2_residues[i] pairs with s1_backbone[i] (antiparallel)
     s2_residues = build_strand2_from_templates(s1_backbone, sequence, form)
 
-    # Step 4: Re-insert correct bases for strand II
-    # The dyad operation copies all atoms including bases from strand I,
-    # but strand II has complementary bases. We need to replace them.
+    # Step 4: Insert complementary bases onto strand II
     for i in range(n_bp):
         comp_base = comp_sequence[i]
-        # Remove strand I base atoms from s2
-        base_atom_names = set()
-        for b in ["A", "T", "G", "C"]:
-            if b in B_BASE_TEMPLATES:
-                base_atom_names.update(B_BASE_TEMPLATES[b]["atoms"].keys())
-
-        s2_backbone = {k: v for k, v in s2_residues[i].items()
-                       if k not in base_atom_names}
-
-        # Insert correct complementary base
-        comp_base_atoms = insert_base(comp_base, s2_backbone, form, i)
-        s2_backbone.update(comp_base_atoms)
-        s2_residues[i] = s2_backbone
+        base_atoms = insert_base(comp_base, s2_residues[i], form, i)
+        s2_residues[i].update(base_atoms)
 
     # Step 5: Convert to atom lists
     all_atoms: List[Atom] = []
