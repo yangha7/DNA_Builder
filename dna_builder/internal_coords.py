@@ -95,9 +95,9 @@ A_DNA_PARAMS = {
         "O5'-C5'-C4'-O4'": 74.8,
         "C5'-C4'-C3'-C2'": 159.3,
         "C4'-C3'-C2'-C1'": -44.0,
-        # Phosphate oxygen dihedrals
-        "C5'-O5'-P-O1P": -85.9,
-        "C5'-O5'-P-O2P": 145.6,
+        # Phosphate oxygen dihedrals (A-DNA specific)
+        "C5'-O5'-P-O1P": -64.1,
+        "C5'-O5'-P-O2P": 167.5,
     },
     "bond_lengths": {
         "C1'-N1": 1.49,
@@ -322,6 +322,51 @@ B_CROSS_STRAND = {
         "C1'_dist": 7.911, "C1'_angle": 111.4, "C1'_dihedral": -175.8,
         "O4'_angle": 108.9, "O4'_dihedral": 97.4,
         "C2'_angle": 142.0, "C2'_dihedral": -109.9,
+    },
+}
+
+A_CROSS_STRAND = {
+    # Purine on s1 -> pyrimidine on s2
+    # ref_atom = N1(s1), angle_ref = C2(s1), dihedral_ref = C6(s1)
+    "A->T": {
+        "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
+        "C1'_dist": 6.103, "C1'_angle": 96.5, "C1'_dihedral": -176.4,
+        "O4'_angle": 142.7, "O4'_dihedral": 153.5,
+        "C2'_angle": 105.1, "C2'_dihedral": -61.8,
+    },
+    "G->C": {
+        "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
+        "C1'_dist": 6.111, "C1'_angle": 94.6, "C1'_dihedral": -176.4,
+        "O4'_angle": 143.2, "O4'_dihedral": 153.3,
+        "C2'_angle": 104.9, "C2'_dihedral": -61.5,
+    },
+    # Pyrimidine on s1 -> purine on s2
+    # ref_atom = N3(s1), angle_ref = C2(s1), dihedral_ref = C4(s1)
+    "T->A": {
+        "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
+        "C1'_dist": 7.977, "C1'_angle": 108.4, "C1'_dihedral": -177.1,
+        "O4'_angle": 143.1, "O4'_dihedral": 151.5,
+        "C2'_angle": 105.4, "C2'_dihedral": -61.9,
+    },
+    "C->G": {
+        "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
+        "C1'_dist": 7.911, "C1'_angle": 111.1, "C1'_dihedral": -177.1,
+        "O4'_angle": 143.2, "O4'_dihedral": 151.3,
+        "C2'_angle": 105.3, "C2'_dihedral": -62.0,
+    },
+}
+
+# Form-specific backbone dihedrals for _build_sugar_and_backbone_from_c1
+# These are used when building strand 2 outward from the sugar frame.
+# Extracted from Colin's 3DNA structures.
+STRAND2_BACKBONE_DIHEDRALS = {
+    "B": {
+        "C2'-C4'-C3'-O3'": 115.9,   # for O3' placement from C3'
+        "O4'-C3'-C4'-C5'": 123.8,   # for C5' placement from C4'
+    },
+    "A": {
+        "C2'-C4'-C3'-O3'": 121.6,   # for O3' placement from C3'
+        "O4'-C3'-C4'-C5'": 119.2,   # for C5' placement from C4'
     },
 }
 

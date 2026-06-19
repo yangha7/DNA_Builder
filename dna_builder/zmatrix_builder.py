@@ -23,7 +23,8 @@ from .internal_coords import (
     Z_DNA_POS1_PARAMS, Z_DNA_POS2_PARAMS,
     INTERNAL_COORDS,
     B_BASE_TEMPLATES, A_BASE_TEMPLATES, Z_BASE_TEMPLATES,
-    B_CROSS_STRAND,
+    B_CROSS_STRAND, A_CROSS_STRAND,
+    STRAND2_BACKBONE_DIHEDRALS,
 )
 from .fiber_data import (
     HELICAL_PARAMS, WC_COMPLEMENT, RESIDUE_NAMES,
@@ -442,9 +443,12 @@ def build_strand2_from_templates(strand1_residues: List[Dict[str, np.ndarray]],
         s2_base = comp_sequence[i]
         s1_nuc = strand1_residues[i]
 
-        # Get cross-strand parameters
+        # Get cross-strand parameters (form-specific)
         bp_key = "{}->{}".format(s1_base, s2_base)
-        cs = B_CROSS_STRAND[bp_key]
+        if form == "A":
+            cs = A_CROSS_STRAND[bp_key]
+        else:
+            cs = B_CROSS_STRAND[bp_key]
 
         # Reference atoms on strand 1's base
         ref_atom = cs["ref_atom"]      # N1 for purines, N3 for pyrimidines
@@ -532,22 +536,23 @@ def _build_sugar_and_backbone_from_c1(c1_pos, o4_pos, c2_pos,
                             nuc["C3'"], nuc["C2'"], nuc["C1'"])
 
     # O3' from C3', angle C4'-C3'-O3'
-    # Dihedral: C2'-C4'-C3'-O3' = 115.9 (extracted from Colin's structures)
+    # Dihedral: C2'-C4'-C3'-O3' (form-specific, extracted from Colin's structures)
     d_c3_o3 = bl["C3'-O3'"]
     a_c4_c3_o3 = ba.get("C4'-C3'-O3'", 108.9)
     # place_atom(d, theta, phi, ref1=C3', ref2=C4', ref3=C2')
     # -> dihedral is C2'-C4'-C3'-O3'
-    dih_c2_c4_c3_o3 = 115.9  # extracted from Colin's B-DNA
+    s2_dihedrals = STRAND2_BACKBONE_DIHEDRALS.get(form, STRAND2_BACKBONE_DIHEDRALS["B"])
+    dih_c2_c4_c3_o3 = s2_dihedrals["C2'-C4'-C3'-O3'"]
     nuc["O3'"] = place_atom(d_c3_o3, a_c4_c3_o3, dih_c2_c4_c3_o3,
                             nuc["C3'"], nuc["C4'"], nuc["C2'"])
 
     # C5' from C4', angle C3'-C4'-C5'
-    # Dihedral: O4'-C3'-C4'-C5' = 123.8 (extracted from Colin's structures)
+    # Dihedral: O4'-C3'-C4'-C5' (form-specific, extracted from Colin's structures)
     d_c4_c5 = bl["C5'-C4'"]
     a_c3_c4_c5 = ba.get("C5'-C4'-C3'", 115.8)
     # place_atom(d, theta, phi, ref1=C4', ref2=C3', ref3=O4')
     # -> dihedral is O4'-C3'-C4'-C5'
-    dih_o4_c3_c4_c5 = 123.8  # extracted from Colin's B-DNA
+    dih_o4_c3_c4_c5 = s2_dihedrals["O4'-C3'-C4'-C5'"]
     nuc["C5'"] = place_atom(d_c4_c5, a_c3_c4_c5, dih_o4_c3_c4_c5,
                             nuc["C4'"], nuc["C3'"], nuc["O4'"])
 
