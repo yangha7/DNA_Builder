@@ -1,14 +1,15 @@
 # DNA Builder
 
-A Python tool for generating accurate A-, B-, and Z-form double-stranded DNA structures from a nucleotide sequence. Unlike Avogadro's built-in DNA builder (which only correctly handles B-form), this tool uses validated nucleotide templates from 3DNA fiber diffraction models with correct backbone conformations for each DNA form.
+A Python tool for generating accurate A-, B-, and Z-form double-stranded DNA structures from a nucleotide sequence, and classifying the conformation of existing DNA structures. Unlike Avogadro's built-in DNA builder (which only correctly handles B-form), this tool uses validated nucleotide templates from 3DNA fiber diffraction models with correct backbone conformations for each DNA form.
 
 ## Features
 
 - **Three DNA forms**: A-DNA, B-DNA, and Z-DNA with correct geometry
+- **DNA conformation classifier**: Determine if a structure is A, B, or Z-form DNA
 - **Validated against 3DNA**: RMSD < 0.01 Å for Z-DNA, < 0.15 Å for A-DNA, < 0.5 Å for B-DNA vs Colin's 3DNA reference structures
-- **Validated against crystal structures**: RMSD 0.73 Å vs 1BNA (B-DNA), 1.29 Å vs 440D (A-DNA)
+- **Validated against crystal structures**: RMSD 0.73 Å vs 1BNA (B-DNA), 1.29 Å vs 440D (A-DNA), 0.69 Å vs 1DCG (Z-DNA)
 - **Correct charge model**: Each phosphate has -1 formal charge; total charge = -(2 × sequence_length)
-- **Multiple output formats**: PDB, XYZ, CML
+- **Multiple formats**: PDB, XYZ, CML for output; PDB, mmCIF, XYZ for input
 - **Batch-friendly**: Command-line interface for scripting
 
 ## Installation
@@ -23,7 +24,7 @@ No additional installation needed — run directly from the project directory.
 
 ## Usage
 
-### Command Line
+### Building DNA Structures
 
 ```bash
 # Build B-DNA (default)
@@ -42,23 +43,62 @@ python -m dna_builder ATCGATCG --format xyz --output dna.xyz
 python -m dna_builder ATCGATCG --format cml --output dna.cml
 ```
 
+### Classifying DNA Conformation
+
+Determine whether a DNA structure is A-, B-, or Z-form:
+
+```bash
+# Classify an AlphaFold prediction (mmCIF format)
+python -m dna_builder --classify fold_atatat_model_0.cif
+
+# Classify a PDB file
+python -m dna_builder --classify structure.pdb
+
+# Classify an XYZ file (provide sequence hint since XYZ has no residue names)
+python -m dna_builder --classify structure.xyz --sequence-hint ATATAT
+```
+
+**Example output:**
+```
+DNA Conformation Classifier
+Input: fold_atatat_model_0.cif
+Sequence: ATATAT (6 bp, chains A+B)
+
+RMSD vs reference models (strand A):
+  B-DNA: 1.54 Å (121 atoms)  ← BEST MATCH
+  A-DNA: 2.86 Å (121 atoms)
+  Z-DNA: 4.71 Å (121 atoms)
+
+Classification: B-DNA
+Confidence: Medium (B-DNA RMSD moderately lower than A-DNA)
+```
+
+The classifier works by:
+1. Extracting the DNA sequence from the input structure
+2. Building reference A, B, and Z-DNA models for that sequence
+3. Computing RMSD (Kabsch superposition) against each reference
+4. Classifying as the form with the lowest RMSD
+
+**Supported input formats:**
+- **PDB** — Standard ATOM records (experimental structures, molecular dynamics)
+- **mmCIF** — AlphaFold3 output format (`_atom_site` loop)
+- **XYZ** — Element + coordinates (requires `--sequence-hint`; classification accuracy is lower due to lack of atom names)
+
 ### Python API
 
 ```python
 from dna_builder.builder import build_dna
 from dna_builder.io_pdb import write_pdb, write_xyz
+from dna_builder.classifier import classify_structure
 
-# Build B-DNA
+# Build DNA
 atoms = build_dna("ATCGATCG", form="B")
 write_pdb(atoms, "b_dna.pdb")
 
-# Build A-DNA
-atoms = build_dna("ATCGATCG", form="A")
-write_pdb(atoms, "a_dna.pdb")
-
-# Build Z-DNA
-atoms = build_dna("GCGCGCGC", form="Z")
-write_xyz(atoms, "z_dna.xyz")
+# Classify a structure
+result = classify_structure("structure.pdb")
+print(f"Classification: {result['classification']}")
+print(f"RMSD: {result['rmsd']}")
 ```
 
 ## How It Works
@@ -107,6 +147,7 @@ Z-DNA uses a dinucleotide as the repeat unit. Both nucleotides within a dinucleo
 |------|--------|-----------|------|-------|
 | B-DNA | 1BNA | Dickerson dodecamer (middle 6 bp) | 0.73 Å | 121 |
 | A-DNA | 440D | A-DNA decamer | 1.29 Å | 404 |
+| Z-DNA | 1DCG | Z-DNA hexamer (P atoms) | 0.69 Å | 5 |
 
 ### Atom Count Verification
 
@@ -119,9 +160,11 @@ dna_builder/
 ├── __init__.py      # Package metadata
 ├── __main__.py      # Entry point for python -m dna_builder
 ├── builder.py       # Core builder: build_b_dna(), build_a_dna(), build_z_dna()
-├── cli.py           # Command-line interface
+├── classifier.py    # DNA conformation classifier (A/B/Z detection)
+├── cli.py           # Command-line interface (build + classify modes)
 ├── fiber_data.py    # Nucleotide templates and helical parameters
-└── io_pdb.py        # PDB, XYZ, CML output writers
+├── io_parser.py     # Input parsers (PDB, mmCIF, XYZ)
+└── io_pdb.py        # Output writers (PDB, XYZ, CML)
 ```
 
 ## References
