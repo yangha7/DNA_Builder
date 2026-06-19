@@ -411,7 +411,7 @@ def build_z_dna(sequence: str) -> List[Atom]:
 
     return all_atoms
 
-def build_dna(sequence: str, form: str = "B") -> List[Atom]:
+def build_dna(sequence: str, form: str = "B", method: str = "template") -> List[Atom]:
     """
     Build double-stranded DNA in the specified form.
 
@@ -421,6 +421,10 @@ def build_dna(sequence: str, form: str = "B") -> List[Atom]:
         Nucleotide sequence for strand I (5' to 3').
     form : str
         DNA form: "A", "B", or "Z".
+    method : str
+        Building method: "template" (v1, default) or "zmatrix" (v2).
+        - template: Uses pre-extracted nucleotide templates with helical screw.
+        - zmatrix: Builds backbone atom-by-atom using internal coordinates.
 
     Returns
     -------
@@ -428,9 +432,16 @@ def build_dna(sequence: str, form: str = "B") -> List[Atom]:
         Complete list of atoms for the double-stranded DNA.
     """
     form = form.upper().strip()
+    method = method.lower().strip()
+
     if form not in ("A", "B", "Z"):
         raise ValueError(f"Unknown DNA form: {form}. Must be A, B, or Z.")
 
+    if method == "zmatrix":
+        from .zmatrix_builder import build_dna_v2
+        return build_dna_v2(sequence, form)
+
+    # Default: template method (v1)
     if form == "B":
         return build_b_dna(sequence)
     elif form == "A":

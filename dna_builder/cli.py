@@ -2,7 +2,7 @@
 Command-line interface for DNA Builder.
 
 Usage:
-    python -m dna_builder SEQUENCE [--form {A,B,Z}] [--output FILE] [--format {pdb,xyz,cml}]
+    python -m dna_builder SEQUENCE [--form {A,B,Z}] [--method {template,zmatrix}] [--output FILE] [--format {pdb,xyz,cml}]
     python -m dna_builder --classify INPUT_FILE [--sequence SEQ]
 
 Examples:
@@ -10,6 +10,7 @@ Examples:
     python -m dna_builder ATCGATCG --form A --output a_dna.pdb
     python -m dna_builder GCGCGCGC --form Z --output z_dna.pdb
     python -m dna_builder ATCG --format xyz --output dna.xyz
+    python -m dna_builder ATCG --method zmatrix --output dna_v2.pdb
     python -m dna_builder --classify fold_atatat_model_0.cif
     python -m dna_builder --classify some_structure.pdb
     python -m dna_builder --classify structure.xyz --sequence ATATAT
@@ -81,6 +82,15 @@ def main():
         help="DNA sequence hint for classification (required for XYZ files "
              "without recognizable sequence in filename).",
     )
+    parser.add_argument(
+        "--method", "-m",
+        type=str,
+        choices=["template", "zmatrix"],
+        default="template",
+        help="Building method: template (v1, default) uses pre-extracted "
+             "nucleotide templates; zmatrix (v2) builds backbone atom-by-atom "
+             "using internal coordinates.",
+    )
 
     args = parser.parse_args()
 
@@ -109,13 +119,15 @@ def main():
         sys.exit(1)
 
     # Build DNA
-    print(f"Building {form}-form DNA: 5'-{sequence}-3'", file=sys.stderr)
+    method = args.method.lower()
+    method_label = "template (v1)" if method == "template" else "zmatrix (v2)"
+    print(f"Building {form}-form DNA: 5'-{sequence}-3'  [{method_label}]", file=sys.stderr)
     print(f"Complement:          3'-{''.join({'A':'T','T':'A','G':'C','C':'G'}[b] for b in sequence)}-5'",
           file=sys.stderr)
     print(f"Length: {len(sequence)} base pairs", file=sys.stderr)
 
     try:
-        atoms = build_dna(sequence, form)
+        atoms = build_dna(sequence, form, method=method)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
