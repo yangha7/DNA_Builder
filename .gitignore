@@ -4,8 +4,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-*.pdb
-*.xyz
-*.cml
 .DS_Store
-__pycache__/
+
+# Ignore generated output files but keep reference structures
+# Use git add -f to force-add specific PDB/XYZ files if needed
