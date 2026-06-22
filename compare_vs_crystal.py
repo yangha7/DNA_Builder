@@ -363,30 +363,32 @@ CASE_440D = CrystalCase(
 )
 
 # ---- Z-DNA: 3P4J ----
-# Chain A: 1-6 (CGCGCG, 5'→3')
-# Chain B: 7-12 (CGCGCG, 5'→3' of strand B)
+# Crystal: Chain A: 1-6 (CGCGCG, 5'→3'), Chain B: 7-12 (CGCGCG, 5'→3')
 # Pairing: A:1↔B:12, A:2↔B:11, ..., A:6↔B:7
-# Middle 4 bp: A:2-5 (GCGC)
-# Paired B: 11,10,9,8
+# Builder builds GCGCGC (canonical pur-pyr alternation for Z-DNA).
+# Crystal A:2(G)↔builder A:1(G), crystal A:3(C)↔builder A:2(C), etc.
+# Middle 4 bp: crystal A:3,4,5,6 ↔ builder A:2,3,4,5
+# Paired B: crystal B:10,9,8,7 ↔ builder B:5,4,3,2
 CASE_3P4J = CrystalCase(
     pdb_id="3P4J", form="Z",
-    full_sequence="CGCGCG",
+    full_sequence="GCGCGC",
     description="Z-DNA hexamer (6-mer)",
-    crystal_chain_a="A", crystal_a_all=list(range(1, 7)),
-    crystal_chain_b="B", crystal_b_all=list(range(7, 13)),
-    middle_a_crystal=[2, 3, 4, 5],
-    middle_b_crystal=[11, 10, 9, 8],
+    crystal_chain_a="A", crystal_a_all=[2, 3, 4, 5, 6, 1],
+    crystal_chain_b="B", crystal_b_all=[11, 10, 9, 8, 7, 12],
+    middle_a_crystal=[3, 4, 5, 6],
+    middle_b_crystal=[10, 9, 8, 7],
 )
 
 # ---- Z-DNA fallback: 1DCG ----
+# Same layout as 3P4J
 CASE_1DCG = CrystalCase(
     pdb_id="1DCG", form="Z",
-    full_sequence="CGCGCG",
+    full_sequence="GCGCGC",
     description="Z-DNA hexamer (6-mer, 1DCG)",
-    crystal_chain_a="A", crystal_a_all=list(range(1, 7)),
-    crystal_chain_b="B", crystal_b_all=list(range(7, 13)),
-    middle_a_crystal=[2, 3, 4, 5],
-    middle_b_crystal=[11, 10, 9, 8],
+    crystal_chain_a="A", crystal_a_all=[2, 3, 4, 5, 6, 1],
+    crystal_chain_b="B", crystal_b_all=[11, 10, 9, 8, 7, 12],
+    middle_a_crystal=[3, 4, 5, 6],
+    middle_b_crystal=[10, 9, 8, 7],
 )
 
 
