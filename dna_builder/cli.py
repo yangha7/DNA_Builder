@@ -86,9 +86,9 @@ def main():
         "--method", "-m",
         type=str,
         choices=["template", "zmatrix"],
-        default="template",
-        help="Building method: template (v1, default) uses pre-extracted "
-             "nucleotide templates; zmatrix (v2) builds backbone atom-by-atom "
+        default="zmatrix",
+        help="Building method: template (v1) uses pre-extracted "
+             "nucleotide templates; zmatrix (v2, default) builds backbone atom-by-atom "
              "using internal coordinates.",
     )
 
