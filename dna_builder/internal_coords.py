@@ -359,63 +359,66 @@ A_CROSS_STRAND = {
 # Z-DNA cross-strand parameters (position-specific)
 # Z-DNA has alternating conformations, so the cross-strand placement
 # depends on the position type of the strand 2 residue.
-# pos1 = syn purine (C3'-endo sugar), pos2 = anti pyrimidine (C2'-endo sugar)
+# In the builder: s2_pos = (n_bp - 1 - i) % 2
+#   POS1 (s2_pos=0): s1=C(anti,pos2), s2=G(syn,C3'-endo) — e.g. A:4(C)->B:9(G)
+#   POS2 (s2_pos=1): s1=G(syn,pos1), s2=C(anti,C2'-endo) — e.g. A:3(G)->B:10(C)
+# Extracted from 3DNA Model 15 (poly d(GC)).
 
 Z_CROSS_STRAND_POS1 = {
-    # When strand 2 residue is at pos1 (anti/C2'-endo on strand 2)
-    # Extracted from Model 15: G(s1)->C(s2) measured directly
+    # s2_pos=0: s2 is syn purine (G) with C3'-endo sugar
+    # Measured from Model 15: C(s1)->G(s2) pairs
     "A->T": {
         "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
         "C1'_dist": 6.104, "C1'_angle": 93.9, "C1'_dihedral": 177.2,
-        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
-        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
+        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
+        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
     },
     "C->G": {
         "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
-        "C1'_dist": 7.918, "C1'_angle": 111.4, "C1'_dihedral": 177.7,
-        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
-        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
+        "C1'_dist": 7.921, "C1'_angle": 111.2, "C1'_dihedral": 177.7,
+        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
+        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
     },
     "G->C": {
         "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
-        "C1'_dist": 6.1, "C1'_angle": 94.5, "C1'_dihedral": 177.2,
-        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
-        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
+        "C1'_dist": 6.199, "C1'_angle": 91.8, "C1'_dihedral": 177.2,
+        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
+        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
     },
     "T->A": {
         "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
         "C1'_dist": 8.004, "C1'_angle": 105.9, "C1'_dihedral": 177.8,
-        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
-        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
+        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
+        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
     },
 }
 
 Z_CROSS_STRAND_POS2 = {
-    # When strand 2 residue is at pos2 (syn/C3'-endo on strand 2)
-    # Extracted from Model 15: C(s1)->G(s2) measured directly
+    # s2_pos=1: s2 is anti pyrimidine (C) with C2'-endo sugar
+    # Measured from Model 15: G(s1)->C(s2) pairs
     "A->T": {
         "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
         "C1'_dist": 6.019, "C1'_angle": 96.7, "C1'_dihedral": 177.2,
-        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
-        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
+        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
+        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
     },
     "C->G": {
         "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
-        "C1'_dist": 7.9, "C1'_angle": 111.2, "C1'_dihedral": 177.7,
-        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
-        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
+        "C1'_dist": 7.842, "C1'_angle": 113.6, "C1'_dihedral": 177.6,
+        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
+        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
     },
     "G->C": {
         "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
-        "C1'_dist": 6.117, "C1'_angle": 94.7, "C1'_dihedral": 177.2,
-        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
-        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
+        "C1'_dist": 6.110, "C1'_angle": 94.5, "C1'_dihedral": 177.2,
+        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
+        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
     },
     "T->A": {
         "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
         "C1'_dist": 7.926, "C1'_angle": 108.1, "C1'_dihedral": 177.7,
-        "O4'_angle": 85.8, "O4'_dihedral": -61.8,
-        "C2'_angle": 91.9, "C2'_dihedral": 46.3,
+        "O4'_angle": 140.5, "O4'_dihedral": 131.0,
+        "C2'_angle": 108.5, "C2'_dihedral": -82.0,
     },
 }
 
