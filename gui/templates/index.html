@@ -633,7 +633,7 @@ function applyStyle() {
 
   const stickBase   = s === "sphere" ? {} : { stick: { radius: s==="stick" ? 0.15 : 0.11 } };
   const sphereBase  = s === "sphere" ? { sphere: { scale: 0.5 } }
-                    : s === "ballstick" ? { sphere: { scale: 0.25 } } : {};
+                    : s === "ballstick" ? { sphere: { scale: 0.40 } } : {};
   const baseStyle   = Object.assign({}, stickBase, sphereBase);
 
   if (c === "chain") {
@@ -885,6 +885,7 @@ function setOpt(key, val, el) {
   el.closest(".opts").querySelectorAll(".opt").forEach(b => b.classList.remove("on"));
   el.classList.add("on");
   if (key === "style" || key === "color") { if (curPDB) applyStyle(); }
+  if (key === "hydrogens" && curPDB) doBuild();
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
