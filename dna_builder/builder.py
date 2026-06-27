@@ -322,6 +322,15 @@ def build_z_dna(sequence: str) -> List[Atom]:
     if len(sequence) % 2 != 0:
         raise ValueError("Z-DNA sequence must have even length (dinucleotide repeat)")
 
+    _comp = {"A": "T", "T": "A", "G": "C", "C": "G"}
+    rev_comp = "".join(_comp[b] for b in reversed(sequence))
+    if rev_comp != sequence:
+        raise ValueError(
+            f"Z-DNA sequence '{sequence}' is not palindromic "
+            f"(reverse complement is '{rev_comp}'). "
+            f"Use a palindromic sequence such as GCGCGCGC."
+        )
+
     # Check for canonical alternating purine-pyrimidine pattern
     is_canonical = all(
         (sequence[i] in PURINE_BASES) == (i % 2 == 0)
