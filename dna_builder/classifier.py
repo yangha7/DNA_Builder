@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .builder import Atom, build_dna
 from .io_parser import parse_structure, extract_sequence_from_atoms, detect_format
-from .fiber_data import HELICAL_PARAMS, WC_COMPLEMENT
+from .fiber_data import HELICAL_PARAMS, WC_COMPLEMENT, BASE_RING_ATOMS
 
 # ---------------------------------------------------------------------------
 # Canonical helical parameters
@@ -364,13 +364,54 @@ def _compute_helical_params(atoms: List[Atom],
                 for i in range(n_bp)
             ])
             centroid_m = mids.mean(axis=0)
-            centered_m = mids - centroid_m
-            _, _, Vt_m = np.linalg.svd(centered_m)
-            axis = Vt_m[0]
+
+            # Build per-residue atom lookup (also reused below for inclination/propeller)
+            bp_atom_dict: Dict[Tuple[str, int], Dict[str, np.ndarray]] = {}
+            for atom in atoms:
+                if atom.chain_id in (chain, chain_b):
+                    bp_atom_dict.setdefault(
+                        (atom.chain_id, atom.residue_seq), {}
+                    )[atom.name] = np.array([atom.x, atom.y, atom.z])
+
+            # Axis: average base-pair plane normals.
+            # SVD of C1'–C1' midpoints fails for short A-form helices because
+            # A-DNA midpoints are 4–5 Å off the helix axis (high X-displacement),
+            # making radial and axial variance comparable for 8 bp.
+            bp_normals_list: list = []
+            for i in range(n_bp):
+                res_a = c1_A[i][0]
+                res_b = c1_B[n_bp - 1 - i][0]
+                pts: list = []
+                for (ch, seq), adict in bp_atom_dict.items():
+                    if (ch == chain and seq == res_a) or (ch == chain_b and seq == res_b):
+                        rname = next(
+                            (a.residue_name for a in atoms
+                             if a.chain_id == ch and a.residue_seq == seq), None)
+                        if rname:
+                            for aname, coord in adict.items():
+                                if aname in BASE_RING_ATOMS.get(rname, []):
+                                    pts.append(coord)
+                if len(pts) >= 3:
+                    arr = np.array(pts); cen = arr.mean(0)
+                    _, _, Vt_n = np.linalg.svd(arr - cen)
+                    bp_normals_list.append(Vt_n[-1])
+
+            if len(bp_normals_list) >= 3:
+                ref_n = bp_normals_list[0]
+                aligned = [n if np.dot(n, ref_n) >= 0 else -n for n in bp_normals_list]
+                axis = np.mean(aligned, axis=0)
+                axis /= np.linalg.norm(axis)
+            else:
+                # Fallback to SVD of midpoints if ring atoms are unavailable
+                _, _, Vt_m = np.linalg.svd(mids - centroid_m)
+                axis = Vt_m[0]
+
             if np.dot(axis, mids[-1] - mids[0]) < 0:
                 axis = -axis
-            proj_m = centered_m @ axis
-            avg_rise = float(abs(np.mean(np.diff(proj_m))))
+
+            proj_m = (mids - centroid_m) @ axis
+            step_rises = list(np.diff(proj_m))
+            avg_rise = float(abs(np.mean(step_rises)))
         else:
             chain_b = None   # fall through to single-strand path
 
@@ -386,29 +427,54 @@ def _compute_helical_params(atoms: List[Atom],
         if np.dot(axis, coords_arr[-1] - coords_arr[0]) < 0:
             axis = -axis
         proj = centered @ axis
-        avg_rise = float(abs(np.mean(np.diff(proj))))
+        step_rises = list(np.diff(proj))
+        avg_rise = float(abs(np.mean(step_rises)))
         n_bp = n_A
 
-    # ── Twist: strand-A C1' atoms projected onto the derived axis ─────────
+    # ── Twist: strand-A C1' projected perp to the helix axis ─────────────
+    # Use midpoint centroid for dsDNA to avoid off-axis bias from centroid_A
+    # (centroid_A can be >1 Å off-axis for non-full-turn helices).
     coords_A = np.array([c[1] for c in c1_A])
-    centroid_A = coords_A.mean(axis=0)
-    centered_A = coords_A - centroid_A
-    perp_A = centered_A - np.outer(centered_A @ axis, axis)
+    axis_ref = centroid_m if chain_b else coords_A.mean(axis=0)
+    perp_A = np.array([
+        c - (axis_ref + float(np.dot(c - axis_ref, axis)) * axis)
+        for c in coords_A
+    ])
 
-    twists = []
+    twists: list = []; t_even: list = []; t_odd: list = []
     for i in range(len(perp_A) - 1):
         v1, v2 = perp_A[i], perp_A[i + 1]
         n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
         if n1 < 0.01 or n2 < 0.01:
             continue
         cos_angle = np.clip(np.dot(v1, v2) / (n1 * n2), -1, 1)
-        angle = np.degrees(np.arccos(cos_angle))
+        angle = float(np.degrees(np.arccos(cos_angle)))
         if np.dot(np.cross(v1, v2), axis) < 0:
             angle = -angle
         twists.append(angle)
+        if i % 2 == 0: t_even.append(angle)
+        else:           t_odd.append(angle)
 
     avg_twist = float(np.mean(twists)) if twists else 0.0
     handedness = 1 if avg_twist > 0 else (-1 if avg_twist < 0 else 0)
+
+    # ── Alternating-step detection (Z-DNA dinucleotide repeat) ───────────
+    is_alternating = False
+    twist_even: Optional[float] = None
+    twist_odd:  Optional[float] = None
+    rise_even:  Optional[float] = None
+    rise_odd:   Optional[float] = None
+    if len(t_even) >= 2 and len(t_odd) >= 2:
+        te_avg = float(np.mean(t_even))
+        to_avg = float(np.mean(t_odd))
+        if abs(te_avg - to_avg) > 20.0:   # clear alternating character
+            is_alternating = True
+            twist_even = te_avg
+            twist_odd  = to_avg
+            r_even = [step_rises[i] for i in range(0, len(step_rises), 2)]
+            r_odd  = [step_rises[i] for i in range(1, len(step_rises), 2)]
+            if r_even: rise_even = float(abs(np.mean(r_even)))
+            if r_odd:  rise_odd  = float(abs(np.mean(r_odd)))
 
     # ── ν₂ sugar pucker: C2'–C3'–C4'–O4' per residue ────────────────────
     by_res: Dict[int, Dict[str, np.ndarray]] = {}
@@ -434,13 +500,92 @@ def _compute_helical_params(atoms: List[Atom],
         if a.chain_id == chain and a.name == 'P'
     ])
     if len(p_coords) >= 2:
-        centroid_ref = coords_A.mean(axis=0)
+        centroid_ref = centroid_m if chain_b else coords_A.mean(axis=0)
         p_cent = p_coords - centroid_ref
         p_proj = np.outer(p_cent @ axis, axis)
         p_perp = p_cent - p_proj
         phosphate_radius = float(np.mean(np.linalg.norm(p_perp, axis=1)))
     else:
         phosphate_radius = 0.0
+
+    # ── Base-pair inclination: angle between bp plane normal and helix axis ──
+    # Requires both strands; uses ring atoms from BASE_RING_ATOMS.
+    inclination_mean: Optional[float] = None
+    inclination_std:  Optional[float] = None
+    propeller_mean:   Optional[float] = None
+    propeller_std:    Optional[float] = None
+    if chain_b:
+        incl_vals: list = []
+        prop_vals: list = []
+        # bp_atom_dict was built in the axis section above; reuse it here.
+
+        n_for_incl = min(len(c1_A), n_bp)
+        for i in range(n_for_incl):
+            res_a = c1_A[i][0]
+            res_b = c1_B[n_bp - 1 - i][0] if i < len(c1_B) else None
+            if res_b is None:
+                continue
+            pts: list = []; pts_a: list = []; pts_b: list = []
+            for (ch, seq), adict in bp_atom_dict.items():
+                if (ch == chain and seq == res_a) or (ch == chain_b and seq == res_b):
+                    res_name = next(
+                        (atom.residue_name for atom in atoms
+                         if atom.chain_id == ch and atom.residue_seq == seq), None)
+                    if res_name:
+                        for aname, coord in adict.items():
+                            if aname in BASE_RING_ATOMS.get(res_name, []):
+                                pts.append(coord)
+                                if ch == chain:    pts_a.append(coord)
+                                else:              pts_b.append(coord)
+
+            # Inclination: angle between base-pair plane normal and helix axis
+            if len(pts) >= 3:
+                pts_arr = np.array(pts)
+                _, _, Vt_bp = np.linalg.svd(pts_arr - pts_arr.mean(axis=0))
+                bp_normal = Vt_bp[-1]
+                if np.dot(bp_normal, axis) < 0:
+                    bp_normal = -bp_normal
+                cos_i = float(np.clip(np.dot(bp_normal, axis), -1.0, 1.0))
+                incl_vals.append(float(np.degrees(np.arccos(cos_i))))
+
+            # Propeller twist: dihedral between individual base plane normals
+            # around the C1'–C1' inter-strand axis.  Positive = purine N9/N1
+            # tilted toward the major groove (3DNA convention: B-DNA ≈ −11°).
+            if len(pts_a) >= 3 and len(pts_b) >= 3:
+                pa = np.array(pts_a)
+                _, _, Vt_a = np.linalg.svd(pa - pa.mean(0))
+                n_a = Vt_a[-1]
+                if np.dot(n_a, axis) < 0: n_a = -n_a
+
+                pb = np.array(pts_b)
+                _, _, Vt_b = np.linalg.svd(pb - pb.mean(0))
+                n_b = Vt_b[-1]
+                if np.dot(n_b, axis) < 0: n_b = -n_b
+
+                c1a = c1_A[i][1]
+                c1b = c1_B[n_bp - 1 - i][1]
+                c1_vec = c1b - c1a
+                c1_len = float(np.linalg.norm(c1_vec))
+                if c1_len > 0.1:
+                    c1_hat = c1_vec / c1_len
+                    n_a_p = n_a - np.dot(n_a, c1_hat) * c1_hat
+                    n_b_p = n_b - np.dot(n_b, c1_hat) * c1_hat
+                    la = float(np.linalg.norm(n_a_p))
+                    lb = float(np.linalg.norm(n_b_p))
+                    if la > 0.01 and lb > 0.01:
+                        n_a_p /= la; n_b_p /= lb
+                        cos_p = float(np.clip(np.dot(n_a_p, n_b_p), -1.0, 1.0))
+                        prop = float(np.degrees(np.arccos(cos_p)))
+                        if np.dot(np.cross(n_a_p, n_b_p), c1_hat) < 0:
+                            prop = -prop
+                        prop_vals.append(prop)
+
+        if incl_vals:
+            inclination_mean = float(np.mean(incl_vals))
+            inclination_std  = float(np.std(incl_vals))
+        if prop_vals:
+            propeller_mean = float(np.mean(prop_vals))
+            propeller_std  = float(np.std(prop_vals))
 
     return {
         'rise':              avg_rise,
@@ -450,6 +595,15 @@ def _compute_helical_params(atoms: List[Atom],
         'nu2_mean':          nu2_mean,
         'nu2_std':           nu2_std,
         'phosphate_radius':  phosphate_radius,
+        'inclination_mean':  inclination_mean,
+        'inclination_std':   inclination_std,
+        'propeller_mean':    propeller_mean,
+        'propeller_std':     propeller_std,
+        'is_alternating':    is_alternating,
+        'twist_even':        twist_even,
+        'twist_odd':         twist_odd,
+        'rise_even':         rise_even,
+        'rise_odd':          rise_odd,
     }
 
 
@@ -759,7 +913,13 @@ def _print_report(result: Dict) -> None:
         print(f"{'Parameter':<22}{'Measured':>10}  {'A-DNA':>8}  {'B-DNA':>8}  {'Z-DNA':>8}")
         print(sep * 22 + sep * 12 + "  " + sep * 10 + "  " + sep * 10 + "  " + sep * 10)
         print(f"{lbl_rise:<22}{rise:>10.2f}  {'2.55':>8}  {'3.38':>8}  {'3.63':>8}")
+        if helical.get('is_alternating') and helical.get('rise_even') is not None:
+            lbl_alt_r = "  (step A / B, Å)"
+            print(f"{lbl_alt_r:<22}{helical['rise_even']:>10.2f} / {helical['rise_odd']:.2f}")
         print(f"{lbl_twist:<22}{twist:>10.1f}  {'+32.7':>8}  {'+36.0':>8}  {'-30.0':>8}")
+        if helical.get('is_alternating') and helical.get('twist_even') is not None:
+            lbl_alt_t = "  (step A / B, °)"
+            print(f"{lbl_alt_t:<22}{helical['twist_even']:>+9.1f} / {helical['twist_odd']:+.1f}")
         if bp_turn < 100:
             print(f"{'bp/turn':<22}{bp_turn:>10.1f}  {'11.0':>8}  {'10.0':>8}  {'12.0':>8}")
         if not (pitch != pitch):   # isnan check
@@ -770,6 +930,18 @@ def _print_report(result: Dict) -> None:
             print(f"{lbl_nu2:<22}{nu2:>+9.1f}{std_str:<3}  {'+40':>8}  {'-33':>8}  {'~+4':>8}")
         if p_rad > 0:
             print(f"{lbl_prad:<22}{p_rad:>10.1f}  {'~9.5':>8}  {'~9.0':>8}  {'~8.5':>8}")
+        lbl_incl = "Inclination (\u00b0)"
+        lbl_prop = "Propeller (\u00b0)"
+        incl = helical.get('inclination_mean')
+        if incl is not None:
+            incl_std = helical.get('inclination_std')
+            sstd = ("\u00b1" + f"{incl_std:.1f}") if incl_std is not None else ""
+            print(f"{lbl_incl:<22}{incl:>+9.1f}{sstd:<3}  {'~20':>8}  {'~7':>8}  {'~9':>8}")
+        prop = helical.get('propeller_mean')
+        if prop is not None:
+            prop_std = helical.get('propeller_std')
+            sstd = ("\u00b1" + f"{prop_std:.1f}") if prop_std is not None else ""
+            print(f"{lbl_prop:<22}{prop:>+9.1f}{sstd:<3}  {'~-18':>8}  {'~-11':>8}  {'~0':>8}")
 
     # \u2500\u2500 Scores \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     print()

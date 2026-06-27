@@ -834,3 +834,13 @@ WC_COMPLEMENT = {"A": "T", "T": "A", "G": "C", "C": "G"}
 RESIDUE_NAMES = {"A": "DA", "T": "DT", "G": "DG", "C": "DC"}
 PURINE_BASES = {"A", "G"}
 PYRIMIDINE_BASES = {"T", "C"}
+
+# Aromatic ring atoms used for base-plane fitting (SVD).
+# Purine (A, G): fused bicyclic system — 9 atoms.
+# Pyrimidine (T, C): monocyclic — 6 atoms.
+BASE_RING_ATOMS = {
+    "DA": ["N9", "C8", "N7", "C5", "C6", "N1", "C2", "N3", "C4"],
+    "DG": ["N9", "C8", "N7", "C5", "C6", "N1", "C2", "N3", "C4"],
+    "DT": ["N1", "C2", "N3", "C4", "C5", "C6"],
+    "DC": ["N1", "C2", "N3", "C4", "C5", "C6"],
+}
