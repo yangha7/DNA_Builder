@@ -77,6 +77,18 @@ body {
 }
 .btn-build:hover    { background: #1f6feb; }
 .btn-build:disabled { background: #444; cursor: default; }
+.btn-hdr {
+  background: var(--bg2);
+  color: var(--tx0);
+  border: 1px solid var(--bd);
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-size: .82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s, color .15s;
+}
+.btn-hdr:hover { border-color: var(--blue); color: var(--blue); }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .layout {
@@ -362,6 +374,9 @@ body {
          oninput="onSeqInput()" onkeydown="if(event.key==='Enter')doBuild()">
   <div id="seq-err"></div>
   <button class="btn-build" id="build-btn" onclick="doBuild()">▶ Build</button>
+  <button class="btn-hdr" onclick="document.getElementById('file-in').click()">📂 Browse</button>
+  <button class="btn-hdr" id="save-btn" onclick="downloadPDB()" disabled title="Build or load a structure first">💾 Save PDB</button>
+  <input id="file-in" type="file" style="display:none" accept=".pdb,.cif,.mmcif" onchange="loadFile(this)">
 </div>
 
 <!-- ═══ MAIN ════════════════════════════════════════════════════════════════ -->
@@ -452,9 +467,6 @@ body {
     <!-- top-right overlay buttons -->
     <div class="vov">
       <button class="vov-btn" onclick="resetView()">↺ Reset View</button>
-      <button class="vov-btn" onclick="downloadPDB()">↓ Download PDB</button>
-      <button class="vov-btn" onclick="document.getElementById('file-in').click()">↑ Load File</button>
-      <input id="file-in" type="file" style="display:none" accept=".pdb,.cif,.mmcif" onchange="loadFile(this)">
     </div>
 
     <!-- chain colour legend -->
@@ -563,6 +575,7 @@ async function doBuild() {
     loadPDB(data.pdb);
     updateFP(data.fingerprint);
     document.getElementById("cls-box").style.display = "none";
+    document.getElementById("save-btn").disabled = false;
 
     // Status bar
     const na = (data.pdb.match(/^ATOM/gm) || []).length;
@@ -847,6 +860,7 @@ function loadFile(inp) {
     hideEmpty();
     loadPDB(curPDB);
     document.getElementById("sb-seq").textContent = file.name;
+    document.getElementById("save-btn").disabled = false;
     setMsg("Loaded " + file.name, "ok");
   };
   reader.readAsText(file);
