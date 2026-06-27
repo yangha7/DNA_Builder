@@ -113,6 +113,19 @@ def place_atom(d: float, theta: float, phi: float,
     return new_pos
 
 
+def _dihedral(a: np.ndarray, b: np.ndarray,
+              c: np.ndarray, d: np.ndarray) -> float:
+    """Return A-B-C-D dihedral angle in degrees."""
+    b1 = b - a; b2 = c - b; b3 = d - c
+    n1 = np.cross(b1, b2); n2 = np.cross(b2, b3)
+    norm1 = np.linalg.norm(n1); norm2 = np.linalg.norm(n2)
+    if norm1 < 1e-8 or norm2 < 1e-8:
+        return 0.0
+    n1 /= norm1; n2 /= norm2
+    m1 = np.cross(n1, b2 / np.linalg.norm(b2))
+    return float(np.degrees(np.arctan2(np.dot(m1, n2), np.dot(n1, n2))))
+
+
 # =============================================================================
 # Backbone chain growth
 # =============================================================================
@@ -810,25 +823,35 @@ def _residues_to_atoms(residues: List[Dict[str, np.ndarray]],
 
 def _generate_5prime_terminal_O(nuc: Dict[str, np.ndarray],
                                  res_name: str, res_seq: int,
-                                 chain_id: str) -> Optional[Atom]:
-    """Generate 5' terminal oxygen (O5T) to complete the PO4 group."""
-    if "P" not in nuc or "O5'" not in nuc:
+                                 chain_id: str,
+                                 prev_O3: Optional[np.ndarray] = None) -> Optional[Atom]:
+    """Generate 5' terminal oxygen (O5T) to complete the PO4 group.
+
+    If prev_O3 is given (the phantom residue's O3' from the grow-and-chop
+    approach), it is used directly — giving the correct ~101° O5T-P-O5'
+    angle instead of the degenerate 180° from a linear projection.
+    """
+    if "P" not in nuc:
         return None
 
     p_coord = nuc["P"]
-    o5_coord = nuc["O5'"]
 
-    direction = o5_coord - p_coord
-    d = np.linalg.norm(direction)
-    if d < 0.01:
-        return None
-
-    p_o_bond = 1.48
-    o5t_coord = p_coord - (direction / d) * p_o_bond
+    if prev_O3 is not None:
+        o5t_coord = prev_O3
+    else:
+        if "O5'" not in nuc:
+            return None
+        o5_coord = nuc["O5'"]
+        direction = o5_coord - p_coord
+        d = np.linalg.norm(direction)
+        if d < 0.01:
+            return None
+        p_o_bond = 1.48
+        o5t_coord = p_coord - (direction / d) * p_o_bond
 
     return Atom(
         name="O5T", element="O",
-        x=o5t_coord[0], y=o5t_coord[1], z=o5t_coord[2],
+        x=float(o5t_coord[0]), y=float(o5t_coord[1]), z=float(o5t_coord[2]),
         residue_name=res_name, residue_seq=res_seq, chain_id=chain_id,
     )
 
@@ -939,8 +962,14 @@ def _build_z_dna_v2(sequence: str) -> List[Atom]:
     canonical_s1_seq = "".join("A" if i % 2 == 0 else "T" for i in range(n_bp))
     canonical_comp = "".join(WC_COMPLEMENT[b] for b in canonical_s1_seq)
 
-    # Step 1: Grow strand I backbone using internal coordinates
-    s1_residues = grow_backbone(n_bp, "Z")
+    # Step 1: Grow strand I backbone using internal coordinates.
+    # Build 2 extra phantom residues at the 5' end so that the first actual
+    # residue's P is placed using a real O3'(prev) rather than a virtual one.
+    # 2 phantoms are required (not 1) to preserve Z-DNA's even/odd position parity:
+    # s1_extended[i+2] uses backbone position i+2, parity (i+2)%2 == i%2.
+    s1_extended = grow_backbone(n_bp + 2, "Z")
+    phantom_O3_s1 = s1_extended[1]["O3'"]   # phantom residue 1's O3' = correct O5T position
+    s1_residues = s1_extended[2:]  # discard phantom residues 0 and 1
 
     # Step 2: Grow canonical bases (A at pos1, T at pos2) onto strand I
     for i in range(n_bp):
@@ -996,9 +1025,10 @@ def _build_z_dna_v2(sequence: str) -> List[Atom]:
     s1_atoms = _residues_to_atoms(s1_residues, sequence, "A", start_seq=1)
     all_atoms.extend(s1_atoms)
 
-    # Generate 5' terminal O for strand I
+    # Generate 5' terminal O for strand I (use phantom O3' for correct ~101° angle)
     o5t = _generate_5prime_terminal_O(s1_residues[0],
-                                       RESIDUE_NAMES[sequence[0]], 1, "A")
+                                       RESIDUE_NAMES[sequence[0]], 1, "A",
+                                       prev_O3=phantom_O3_s1)
     if o5t:
         terminal_atoms.append(o5t)
 
@@ -1007,10 +1037,26 @@ def _build_z_dna_v2(sequence: str) -> List[Atom]:
                                    start_seq=1, reverse_numbering=True)
     all_atoms.extend(s2_atoms)
 
-    # Generate 5' terminal O for strand II
-    o5t_s2 = _generate_5prime_terminal_O(s2_residues[-1],
+    # Generate 5' terminal O for strand II.
+    # Backbone connectivity: O3'(s2[i+1]) links to P(s2[i]).
+    # Compute O5T dihedral from a same-parity internal reference (offset -2 from
+    # terminal preserves Z-DNA even/odd alternation: n_bp-3 has same parity as n_bp-1).
+    s2_term = s2_residues[-1]
+    ref_idx = max(0, n_bp - 3)
+    s2_ref_O5T_dih = _dihedral(
+        s2_residues[ref_idx]["C5'"], s2_residues[ref_idx]["O5'"],
+        s2_residues[ref_idx]["P"],   s2_residues[ref_idx + 1]["O3'"],
+    )
+    s2_term_params = _get_params("Z", n_bp - 1)
+    phantom_O3_s2 = place_atom(
+        s2_term_params["bond_lengths"].get("O3'-P", 1.601),
+        s2_term_params["bond_angles"].get("O3'-P-O5'", 101.4),
+        s2_ref_O5T_dih,
+        s2_term["P"], s2_term["O5'"], s2_term["C5'"],
+    )
+    o5t_s2 = _generate_5prime_terminal_O(s2_term,
                                           RESIDUE_NAMES[comp_sequence[-1]],
-                                          1, "B")
+                                          1, "B", prev_O3=phantom_O3_s2)
     if o5t_s2:
         terminal_atoms.append(o5t_s2)
 
@@ -1043,8 +1089,12 @@ def _build_dna_v2(sequence: str, form: str) -> List[Atom]:
     n_bp = len(sequence)
     comp_sequence = "".join(WC_COMPLEMENT[b] for b in sequence)
 
-    # Step 1: Grow strand I backbone
-    s1_backbone = grow_backbone(n_bp, form)
+    # Step 1: Grow strand I backbone.
+    # Build 2 extra phantom residues so the first actual residue's P is placed
+    # using a real O3'(prev) — fixes terminal phosphate orientation.
+    s1_extended = grow_backbone(n_bp + 2, form)
+    phantom_O3_s1 = s1_extended[1]["O3'"]   # for correct O5T placement
+    s1_backbone = s1_extended[2:]  # discard phantom residues
 
     # Step 2: Insert bases onto strand I
     for i in range(n_bp):
@@ -1070,9 +1120,10 @@ def _build_dna_v2(sequence: str, form: str) -> List[Atom]:
     s1_atoms = _residues_to_atoms(s1_backbone, sequence, "A", start_seq=1)
     all_atoms.extend(s1_atoms)
 
-    # Generate 5' terminal O for strand I
+    # Generate 5' terminal O for strand I (use phantom O3' for correct ~101° angle)
     o5t = _generate_5prime_terminal_O(s1_backbone[0],
-                                       RESIDUE_NAMES[sequence[0]], 1, "A")
+                                       RESIDUE_NAMES[sequence[0]], 1, "A",
+                                       prev_O3=phantom_O3_s1)
     if o5t:
         terminal_atoms.append(o5t)
 
@@ -1082,10 +1133,25 @@ def _build_dna_v2(sequence: str, form: str) -> List[Atom]:
                                    start_seq=1, reverse_numbering=True)
     all_atoms.extend(s2_atoms)
 
-    # Generate 5' terminal O for strand II (5' end is the last residue in pairing order)
-    o5t_s2 = _generate_5prime_terminal_O(s2_residues[-1],
+    # Generate 5' terminal O for strand II (5' end is the last residue in pairing order).
+    # Backbone connectivity: O3'(s2[i+1]) links to P(s2[i]).
+    # Compute O5T dihedral from an adjacent internal reference residue.
+    s2_term = s2_residues[-1]
+    # O3'(s2[-1]) is the prev O3' for P(s2[-2]) per connectivity rules
+    s2_ref_O5T_dih = _dihedral(
+        s2_residues[-2]["C5'"], s2_residues[-2]["O5'"],
+        s2_residues[-2]["P"],   s2_residues[-1]["O3'"],
+    )
+    s2_term_params = _get_params(form, n_bp - 1)
+    phantom_O3_s2 = place_atom(
+        s2_term_params["bond_lengths"].get("O3'-P", 1.601),
+        s2_term_params["bond_angles"].get("O3'-P-O5'", 101.4),
+        s2_ref_O5T_dih,
+        s2_term["P"], s2_term["O5'"], s2_term["C5'"],
+    )
+    o5t_s2 = _generate_5prime_terminal_O(s2_term,
                                           RESIDUE_NAMES[comp_sequence[-1]],
-                                          1, "B")
+                                          1, "B", prev_O3=phantom_O3_s2)
     if o5t_s2:
         terminal_atoms.append(o5t_s2)
 

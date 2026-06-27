@@ -370,8 +370,8 @@ body {
 <div class="hdr">
   <div class="hdr-logo">DNA Builder</div>
   <div class="hdr-label">Sequence 5'→3'</div>
-  <input id="seq-input" type="text" placeholder="e.g. ATCGATCG"
-         value="ATCGATCG" spellcheck="false"
+  <input id="seq-input" type="text" placeholder="e.g. ATCGCGAT"
+         value="ATCGCGAT" spellcheck="false"
          oninput="onSeqInput()" onkeydown="if(event.key==='Enter')doBuild()">
   <div id="seq-err"></div>
   <button class="btn-build" id="build-btn" onclick="doBuild()">▶ Build</button>
@@ -426,8 +426,8 @@ body {
     <div class="sec">
       <div class="sec-title">Color By</div>
       <div class="opts" id="opt-color">
-        <div class="opt on" onclick="setOpt('color','chain',this)">Chain</div>
-        <div class="opt" onclick="setOpt('color','element',this)">Element</div>
+        <div class="opt" onclick="setOpt('color','chain',this)">Chain</div>
+        <div class="opt on" onclick="setOpt('color','element',this)">Element</div>
         <div class="opt" onclick="setOpt('color','residue',this)">Residue</div>
       </div>
     </div>
@@ -508,7 +508,7 @@ body {
 let viewer = null;
 let curPDB  = "";
 let curFP   = null;
-let state   = { form:"B", method:"zmatrix", style:"ballstick", color:"chain", hydrogens:"yes" };
+let state   = { form:"B", method:"zmatrix", style:"ballstick", color:"element", hydrogens:"yes" };
 
 // Measurement
 let mMode   = null;    // "distance" | "angle" | "dihedral"
