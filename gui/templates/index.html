@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DNA Builder</title>
+<script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+<style>
+/* ── Theme ───────────────────────────────────────────────────────────────── */
+:root {
+  --bg0:   #0d1117;
+  --bg1:   #161b22;
+  --bg2:   #21262d;
+  --bd:    #30363d;
+  --tx0:   #e6edf3;
+  --tx1:   #8b949e;
+  --blue:  #388bfd;
+  --green: #3fb950;
+  --orange:#d29922;
+  --red:   #f85149;
+  --chainA:#4da6ff;
+  --chainB:#ff7f7f;
+  --gold:  #ffd700;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg0);
+  color: var(--tx0);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.hdr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 16px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--bd);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.hdr-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--blue);
+  white-space: nowrap;
+  letter-spacing: .03em;
+}
+.hdr-label { color: var(--tx1); font-size: .8rem; white-space: nowrap; }
+#seq-input {
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 5px;
+  color: var(--tx0);
+  padding: 6px 10px;
+  font: 600 1rem "Courier New", monospace;
+  letter-spacing: 2px;
+  width: 280px;
+  transition: border-color .15s;
+}
+#seq-input:focus { outline: none; border-color: var(--blue); }
+#seq-input.err   { border-color: var(--red); }
+#seq-err  { font-size: .72rem; color: var(--red); }
+.btn-build {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.btn-build:hover    { background: #1f6feb; }
+.btn-build:disabled { background: #444; cursor: default; }
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  width: 250px;
+  background: var(--bg1);
+  border-right: 1px solid var(--bd);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.sec {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--bd);
+}
+.sec-title {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--tx1);
+  margin-bottom: 8px;
+}
+
+/* Segmented option buttons */
+.opts { display: flex; gap: 3px; }
+.opt {
+  flex: 1;
+  text-align: center;
+  padding: 4px 6px;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  color: var(--tx1);
+  font-size: .8rem;
+  cursor: pointer;
+  transition: all .12s;
+  user-select: none;
+}
+.opt:hover:not(.on) { color: var(--tx0); background: var(--bg0); }
+.opt.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+
+/* Small action button */
+.sec-btn {
+  width: 100%;
+  padding: 5px 10px;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  color: var(--tx1);
+  font-size: .8rem;
+  cursor: pointer;
+  text-align: center;
+  transition: all .12s;
+}
+.sec-btn:hover { color: var(--tx0); border-color: var(--blue); }
+
+/* ── Fingerprint panel ───────────────────────────────────────────────────── */
+.fp-placeholder { color: var(--tx1); font-size: .78rem; }
+.fp-row { margin-bottom: 8px; }
+.fp-key { font-size: .72rem; color: var(--tx1); margin-bottom: 1px; }
+.fp-val { font: 600 .9rem "Courier New", monospace; color: var(--blue); }
+.fp-sub { font-size: .7rem; color: var(--tx1); font-weight: 400; }
+.fp-track {
+  height: 4px;
+  background: var(--bg0);
+  border-radius: 2px;
+  margin-top: 3px;
+  position: relative;
+  overflow: visible;
+}
+.fp-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  transition: width .5s ease;
+}
+.fp-ref-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  background: var(--orange);
+  border-radius: 1px;
+}
+.fp-legend { font-size: .68rem; color: var(--tx1); margin-top: 6px; }
+
+/* ── Classify result ─────────────────────────────────────────────────────── */
+.cls-box {
+  background: var(--bg2);
+  border-radius: 5px;
+  padding: 7px 9px;
+  font-size: .78rem;
+  margin-top: 7px;
+  display: none;
+}
+.cls-form { font-size: .95rem; font-weight: 700; }
+.cls-A { color: #4ade80; }
+.cls-B { color: var(--blue); }
+.cls-Z { color: #f97316; }
+.cls-rmsd-row { display: flex; justify-content: space-between; }
+.cls-rmsd-row.best { color: var(--tx0); font-weight: 600; }
+
+/* ── Measurement tools ───────────────────────────────────────────────────── */
+.m-btns { display: flex; gap: 3px; flex-wrap: wrap; }
+.m-btn {
+  flex: 1;
+  padding: 4px 6px;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  color: var(--tx1);
+  font-size: .78rem;
+  cursor: pointer;
+  text-align: center;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.m-btn:hover:not(.on) { color: var(--tx0); }
+.m-btn.on { border-color: var(--gold); color: var(--gold); background: rgba(255,215,0,.08); }
+#m-status { font-size: .72rem; color: var(--tx1); min-height: 14px; margin: 5px 0; }
+.m-list { max-height: 180px; overflow-y: auto; }
+.m-item {
+  background: var(--bg2);
+  border-radius: 4px;
+  padding: 4px 7px;
+  margin-bottom: 3px;
+}
+.m-item-val  { color: var(--gold); font: 600 .82rem "Courier New", monospace; }
+.m-item-type { color: var(--tx1); font-size: .7rem; margin-left: 4px; }
+.m-item-desc { color: var(--tx1); font-size: .7rem; }
+
+/* ── Viewer area ─────────────────────────────────────────────────────────── */
+.viewer-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  background: var(--bg0);
+}
+#mol-viewer {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Overlay buttons (top-right of viewer) */
+.vov {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 100;
+}
+.vov-btn {
+  background: rgba(13,17,23,.88);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  color: var(--tx0);
+  padding: 5px 10px;
+  font-size: .78rem;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: border-color .12s;
+  white-space: nowrap;
+}
+.vov-btn:hover { border-color: var(--blue); }
+
+/* Chain legend */
+.chain-legend {
+  position: absolute;
+  bottom: 28px;
+  left: 10px;
+  background: rgba(13,17,23,.8);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: .72rem;
+  display: none;
+  z-index: 100;
+}
+.chain-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* Measurement mode hint */
+.m-hint {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13,17,23,.9);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: .76rem;
+  backdrop-filter: blur(4px);
+  display: none;
+  z-index: 100;
+  white-space: nowrap;
+}
+
+/* Atom hover tooltip */
+#atom-tip {
+  position: fixed;
+  background: rgba(13,17,23,.95);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: .72rem;
+  color: var(--tx0);
+  pointer-events: none;
+  display: none;
+  z-index: 200;
+  font-family: "Courier New", monospace;
+}
+
+/* Empty state */
+.empty {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  text-align: center;
+  color: var(--tx1);
+  pointer-events: none;
+}
+.empty-icon { font-size: 3rem; margin-bottom: 10px; }
+.empty-title { font-size: 1rem; font-weight: 600; color: var(--tx0); }
+.empty-sub   { font-size: .8rem; margin-top: 5px; }
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+.statusbar {
+  background: var(--bg1);
+  border-top: 1px solid var(--bd);
+  padding: 3px 14px;
+  font-size: .7rem;
+  color: var(--tx1);
+  display: flex;
+  gap: 18px;
+  flex-shrink: 0;
+  align-items: center;
+}
+.statusbar span { color: var(--tx0); margin-left: 3px; }
+#sb-msg { margin-left: auto; }
+#sb-msg.ok  { color: var(--green); }
+#sb-msg.err { color: var(--red); }
+
+/* Spinner */
+.spin {
+  display: inline-block;
+  width: 11px; height: 11px;
+  border: 2px solid rgba(255,255,255,.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .55s linear infinite;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═════════════════════════════════════════════════════════════ -->
+<div class="hdr">
+  <div class="hdr-logo">DNA Builder</div>
+  <div class="hdr-label">Sequence 5'→3'</div>
+  <input id="seq-input" type="text" placeholder="e.g. ATCGATCG"
+         value="ATCGATCG" spellcheck="false"
+         oninput="onSeqInput()" onkeydown="if(event.key==='Enter')doBuild()">
+  <div id="seq-err"></div>
+  <button class="btn-build" id="build-btn" onclick="doBuild()">▶ Build</button>
+</div>
+
+<!-- ═══ MAIN ════════════════════════════════════════════════════════════════ -->
+<div class="layout">
+
+  <!-- ─── SIDEBAR ──────────────────────────────────────────────────────── -->
+  <div class="sidebar">
+
+    <div class="sec">
+      <div class="sec-title">DNA Form</div>
+      <div class="opts" id="opt-form">
+        <div class="opt" onclick="setOpt('form','A',this)">A</div>
+        <div class="opt on" onclick="setOpt('form','B',this)">B</div>
+        <div class="opt" onclick="setOpt('form','Z',this)">Z</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Build Method</div>
+      <div class="opts" id="opt-method">
+        <div class="opt on" onclick="setOpt('method','zmatrix',this)">Z-Matrix</div>
+        <div class="opt" onclick="setOpt('method','template',this)">Template</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Hydrogens</div>
+      <div class="opts" id="opt-hydrogens">
+        <div class="opt on" onclick="setOpt('hydrogens','yes',this)">With H</div>
+        <div class="opt" onclick="setOpt('hydrogens','no',this)">Heavy only</div>
+      </div>
+      <div style="font-size:.68rem;color:var(--tx1);margin-top:5px;">
+        "Heavy only" for cleaner comparison with other builders.
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Display Style</div>
+      <div class="opts" id="opt-style">
+        <div class="opt" onclick="setOpt('style','stick',this)">Stick</div>
+        <div class="opt on" onclick="setOpt('style','ballstick',this)">Ball+Stick</div>
+        <div class="opt" onclick="setOpt('style','sphere',this)">CPK</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Color By</div>
+      <div class="opts" id="opt-color">
+        <div class="opt on" onclick="setOpt('color','chain',this)">Chain</div>
+        <div class="opt" onclick="setOpt('color','element',this)">Element</div>
+        <div class="opt" onclick="setOpt('color','residue',this)">Residue</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Classification</div>
+      <button class="sec-btn" onclick="doClassify()">🔍 Classify Current Structure</button>
+      <div class="cls-box" id="cls-box"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Structural Fingerprint</div>
+      <div id="fp-panel">
+        <div class="fp-placeholder">Build a structure to see fingerprint parameters.</div>
+      </div>
+    </div>
+
+    <div class="sec" style="flex:1">
+      <div class="sec-title">Measurement Tools</div>
+      <div class="m-btns">
+        <div class="m-btn" id="mbtn-dist"     onclick="setMMode('distance')">📏 Distance</div>
+        <div class="m-btn" id="mbtn-angle"    onclick="setMMode('angle')">∠ Angle</div>
+        <div class="m-btn" id="mbtn-dihedral" onclick="setMMode('dihedral')">⟳ Dihedral</div>
+      </div>
+      <div id="m-status"></div>
+      <div class="m-list" id="m-list">
+        <div style="color:var(--tx1);font-size:.72rem;">No measurements yet.</div>
+      </div>
+      <button class="sec-btn" style="margin-top:7px" onclick="clearMeasurements()">🗑 Clear Measurements</button>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ─── VIEWER ────────────────────────────────────────────────────────── -->
+  <div class="viewer-wrap">
+    <div id="mol-viewer"></div>
+
+    <!-- top-right overlay buttons -->
+    <div class="vov">
+      <button class="vov-btn" onclick="resetView()">↺ Reset View</button>
+      <button class="vov-btn" onclick="downloadPDB()">↓ Download PDB</button>
+      <button class="vov-btn" onclick="document.getElementById('file-in').click()">↑ Load File</button>
+      <input id="file-in" type="file" style="display:none" accept=".pdb,.cif,.mmcif" onchange="loadFile(this)">
+    </div>
+
+    <!-- chain colour legend -->
+    <div class="chain-legend" id="chain-legend">
+      <span class="chain-dot" style="background:var(--chainA)"></span>Strand A (5'→3')&nbsp;&nbsp;
+      <span class="chain-dot" style="background:var(--chainB)"></span>Strand B (3'→5')
+    </div>
+
+    <!-- measurement hint -->
+    <div class="m-hint" id="m-hint"></div>
+
+    <!-- empty state -->
+    <div class="empty" id="empty-state">
+      <div class="empty-icon">🧬</div>
+      <div class="empty-title">Enter a sequence and click Build</div>
+      <div class="empty-sub">Supports A, B, and Z-form DNA · A / T / G / C bases</div>
+    </div>
+  </div>
+
+</div><!-- /layout -->
+
+<!-- ═══ STATUS BAR ══════════════════════════════════════════════════════════ -->
+<div class="statusbar">
+  <div>Form:<span id="sb-form">—</span></div>
+  <div>Sequence:<span id="sb-seq">—</span></div>
+  <div>Atoms:<span id="sb-atoms">—</span></div>
+  <div>Base pairs:<span id="sb-bp">—</span></div>
+  <div id="sb-msg"></div>
+</div>
+
+<!-- atom hover tooltip -->
+<div id="atom-tip"></div>
+
+<!-- ═══ SCRIPT ══════════════════════════════════════════════════════════════ -->
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let viewer = null;
+let curPDB  = "";
+let curFP   = null;
+let state   = { form:"B", method:"zmatrix", style:"ballstick", color:"chain", hydrogens:"yes" };
+
+// Measurement
+let mMode   = null;    // "distance" | "angle" | "dihedral"
+let picked  = [];      // { x,y,z, name, resn, resi, chain }
+let mList   = [];      // completed measurements
+const mReq  = { distance:2, angle:3, dihedral:4 };
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener("load", () => {
+  const el = document.getElementById("mol-viewer");
+  viewer = $3Dmol.createViewer(el, { backgroundColor: 0x0d1117, antialias: true });
+  viewer.resize();
+  window.addEventListener("resize", () => viewer && viewer.resize());
+});
+
+// ── Sequence validation ───────────────────────────────────────────────────────
+function onSeqInput() {
+  const v = document.getElementById("seq-input").value.toUpperCase();
+  document.getElementById("seq-input").value = v;
+  validateSeq(v, true);
+}
+
+function validateSeq(seq, ui) {
+  const bad  = [...seq].filter(c => !"ATGC".includes(c));
+  const errEl = document.getElementById("seq-err");
+  const inp   = document.getElementById("seq-input");
+  if (!seq) {
+    inp.classList.remove("err"); errEl.textContent = ""; return false;
+  }
+  if (bad.length) {
+    if (ui) { inp.classList.add("err"); errEl.textContent = "Invalid: " + [...new Set(bad)].join(","); }
+    return false;
+  }
+  if (seq.length < 2) {
+    if (ui) { inp.classList.add("err"); errEl.textContent = "Min 2 bases"; }
+    return false;
+  }
+  inp.classList.remove("err"); errEl.textContent = "";
+  return true;
+}
+
+// ── Build ────────────────────────────────────────────────────────────────────
+async function doBuild() {
+  const seq = document.getElementById("seq-input").value.trim();
+  if (!validateSeq(seq, true)) return;
+
+  const btn = document.getElementById("build-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Building…';
+  setMsg("Building…", "");
+
+  try {
+    const res  = await fetch("/api/build", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sequence: seq, form: state.form, method: state.method,
+                             hydrogens: state.hydrogens !== "no" }),
+    });
+    const data = await res.json();
+    if (data.error) { setMsg("Error: " + data.error, "err"); return; }
+
+    curPDB = data.pdb;
+    curFP  = data.fingerprint;
+
+    hideEmpty();
+    loadPDB(data.pdb);
+    updateFP(data.fingerprint);
+    document.getElementById("cls-box").style.display = "none";
+
+    // Status bar
+    const na = (data.pdb.match(/^ATOM/gm) || []).length;
+    document.getElementById("sb-form").textContent  = state.form + "-DNA";
+    document.getElementById("sb-seq").textContent   = "5'-" + seq + "-3'";
+    document.getElementById("sb-atoms").textContent = na;
+    document.getElementById("sb-bp").textContent    = seq.length;
+    setMsg("Built successfully", "ok");
+
+  } catch (e) { setMsg("Network error: " + e.message, "err"); }
+  finally {
+    btn.disabled = false;
+    btn.innerHTML = "▶ Build";
+  }
+}
+
+// ── 3Dmol viewer ─────────────────────────────────────────────────────────────
+function loadPDB(pdbStr) {
+  viewer.clear();
+  mList  = [];
+  picked = [];
+  renderMList();
+
+  viewer.addModel(pdbStr, "pdb");
+  applyStyle();
+  viewer.zoomTo();
+  viewer.render();
+
+  // Click → measurement
+  viewer.setClickable({}, true, (atom) => {
+    if (mMode) handlePick(atom);
+  });
+
+  // Hover → tooltip
+  const tip = document.getElementById("atom-tip");
+  viewer.setHoverable({}, true,
+    (atom, v, ev) => {
+      tip.textContent = `${atom.chain}${atom.resi} ${atom.resn} · ${atom.atom}`;
+      tip.style.display = "block";
+      tip.style.left = (ev.clientX + 12) + "px";
+      tip.style.top  = (ev.clientY + 12) + "px";
+    },
+    () => { tip.style.display = "none"; }
+  );
+
+  document.getElementById("chain-legend").style.display =
+    state.color === "chain" ? "block" : "none";
+}
+
+function applyStyle() {
+  if (!viewer) return;
+  const s = state.style;
+  const c = state.color;
+
+  const stickBase   = s === "sphere" ? {} : { stick: { radius: s==="stick" ? 0.15 : 0.11 } };
+  const sphereBase  = s === "sphere" ? { sphere: { scale: 0.5 } }
+                    : s === "ballstick" ? { sphere: { scale: 0.25 } } : {};
+  const baseStyle   = Object.assign({}, stickBase, sphereBase);
+
+  if (c === "chain") {
+    viewer.setStyle({ chain:"A" }, colorize(baseStyle, "#4da6ff"));
+    viewer.setStyle({ chain:"B" }, colorize(baseStyle, "#ff7f7f"));
+  } else if (c === "element") {
+    viewer.setStyle({}, schemed(baseStyle, "Jmol"));
+  } else {
+    const rc = { DA:"#40e0d0", DT:"#ffa500", DG:"#90ee90", DC:"#ff69b4" };
+    for (const [res, col] of Object.entries(rc))
+      viewer.setStyle({ resn: res }, colorize(baseStyle, col));
+  }
+
+  document.getElementById("chain-legend").style.display =
+    c === "chain" && curPDB ? "block" : "none";
+
+  viewer.render();
+}
+
+function colorize(obj, col) {
+  const r = JSON.parse(JSON.stringify(obj));
+  for (const k of Object.keys(r)) { r[k].color = col; delete r[k].colorscheme; }
+  return r;
+}
+function schemed(obj, scheme) {
+  const r = JSON.parse(JSON.stringify(obj));
+  for (const k of Object.keys(r)) { r[k].colorscheme = scheme; delete r[k].color; }
+  return r;
+}
+
+function resetView() { if (viewer) { viewer.zoomTo(); viewer.render(); } }
+
+// ── Fingerprint ───────────────────────────────────────────────────────────────
+// Typical values for each form (used for the reference tick mark)
+const FP_REF = {
+  A: { pp: 5.85, c1c1: 9.0,  gly: 8.4  },
+  B: { pp: 6.05, c1c1: 10.4, gly: 9.7  },
+  Z: { pp: 6.35, c1c1: 9.2,  gly: 8.75 },
+};
+
+function updateFP(fp) {
+  if (!fp) return;
+  const el  = document.getElementById("fp-panel");
+  const ref = FP_REF[fp.form] || FP_REF.B;
+
+  function row(label, stats, refVal, maxVal) {
+    if (!stats || stats.values.length === 0) return "";
+    const pct    = Math.min(100, (stats.mean / maxVal) * 100).toFixed(1);
+    const refPct = Math.min(100, (refVal     / maxVal) * 100).toFixed(1);
+    return `
+      <div class="fp-row">
+        <div class="fp-key">${label}</div>
+        <div class="fp-val">${stats.mean.toFixed(2)} Å
+          <span class="fp-sub">± ${stats.std.toFixed(2)}  (n=${stats.values.length})</span>
+        </div>
+        <div class="fp-track">
+          <div class="fp-fill" style="width:${pct}%"></div>
+          <div class="fp-ref-tick" style="left:calc(${refPct}% - 1px)"></div>
+        </div>
+      </div>`;
+  }
+
+  const formColor = fp.form==="B"?"var(--blue)":fp.form==="A"?"#4ade80":"#f97316";
+  el.innerHTML = `
+    <div class="fp-row">
+      <div class="fp-key">Form / Base pairs</div>
+      <div class="fp-val" style="color:${formColor}">${fp.form}-DNA</div>
+      <div style="font-size:.72rem;color:var(--tx1)">${fp.n_bp} bp</div>
+    </div>
+    ${row("P–P backbone distance (intra-strand)", fp.pp_distances,        ref.pp,   10)}
+    ${row("C1'–C1' cross-strand distance",        fp.c1c1_distances,      ref.c1c1, 14)}
+    ${row("Glycosidic N–N cross-strand distance", fp.glycosidic_distances,ref.gly,  13)}
+    <div class="fp-legend">
+      <span style="color:var(--blue)">━</span> actual &nbsp;
+      <span style="color:var(--orange)">┃</span> typical ${fp.form}-DNA
+    </div>`;
+}
+
+// ── Classify ──────────────────────────────────────────────────────────────────
+async function doClassify() {
+  if (!curPDB) { alert("No structure loaded. Build or load a PDB first."); return; }
+  const box = document.getElementById("cls-box");
+  box.style.display = "block";
+  box.innerHTML = '<span class="spin"></span>Classifying…';
+
+  try {
+    const res  = await fetch("/api/classify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pdb: curPDB }),
+    });
+    const d = await res.json();
+    if (d.error) { box.innerHTML = `<span style="color:var(--red)">${d.error}</span>`; return; }
+
+    const f    = (d.classification || "?").replace("-DNA","");
+    const fcol = { A:"#4ade80", B:"var(--blue)", Z:"#f97316" }[f] || "var(--tx0)";
+
+    let rmsdHtml = "";
+    if (d.rmsds) {
+      const bestF = d.classification || "";
+      for (const [k, v] of Object.entries(d.rmsds)) {
+        const isBest = k === bestF;
+        rmsdHtml += `<div class="cls-rmsd-row${isBest?" best":""}">
+          <span>${k}</span><span>${parseFloat(v).toFixed(3)} Å${isBest?" ✓":""}</span>
+        </div>`;
+      }
+    }
+
+    box.innerHTML = `
+      <div>Classification:&nbsp;
+        <span class="cls-form" style="color:${fcol}">${d.classification || "?"}</span>
+      </div>
+      ${d.confidence ? `<div style="color:var(--tx1);margin:2px 0">${d.confidence} confidence</div>` : ""}
+      ${rmsdHtml}
+      ${d.confidence_detail ? `<div style="color:var(--tx1);margin-top:4px;font-size:.68rem">${d.confidence_detail}</div>` : ""}`;
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">Network error</span>`; }
+}
+
+// ── Measurement ───────────────────────────────────────────────────────────────
+function setMMode(mode) {
+  if (mMode === mode) { mMode = null; picked = []; updateMHint(); updateMStatus(); return; }
+  mMode  = mode;
+  picked = [];
+  ["dist","angle","dihedral"].forEach(k => {
+    document.getElementById("mbtn-"+k).classList.toggle("on", k===mode.replace("distance","dist"));
+  });
+  updateMHint();
+  updateMStatus();
+}
+
+function updateMHint() {
+  const el = document.getElementById("m-hint");
+  if (!mMode) { el.style.display = "none"; return; }
+  const msgs = { distance:"Click 2 atoms to measure distance",
+                 angle:"Click 3 atoms to measure angle (vertex = 2nd atom)",
+                 dihedral:"Click 4 atoms to measure dihedral angle" };
+  el.textContent = msgs[mMode];
+  el.style.display = "block";
+}
+
+function updateMStatus() {
+  const el = document.getElementById("m-status");
+  if (!mMode) { el.textContent = ""; return; }
+  el.textContent = `${picked.length} / ${mReq[mMode]} atoms selected`;
+}
+
+function handlePick(atom) {
+  picked.push({ x:atom.x, y:atom.y, z:atom.z,
+                name:atom.atom||atom.name, resn:atom.resn,
+                resi:atom.resi, chain:atom.chain });
+
+  // Highlight
+  viewer.addSphere({ center:{x:atom.x,y:atom.y,z:atom.z},
+                     radius:0.45, color:"#ffd700", opacity:.85 });
+  viewer.render();
+  updateMStatus();
+
+  if (picked.length === mReq[mMode]) finalizeMeasurement();
+}
+
+function finalizeMeasurement() {
+  const p = picked;
+  let val = 0, label = "", desc = "";
+
+  if (mMode === "distance") {
+    val   = dist3(p[0], p[1]);
+    label = val.toFixed(3) + " Å";
+    desc  = fmt(p[0]) + " — " + fmt(p[1]);
+    viewer.addLine({ start:xyz(p[0]), end:xyz(p[1]),
+                     color:"#ffd700", linewidth:2 });
+    viewer.addLabel(label, labelOpts(mid(p[0],p[1])));
+
+  } else if (mMode === "angle") {
+    val   = angle3(p[0], p[1], p[2]);
+    label = val.toFixed(2) + "°";
+    desc  = fmt(p[0]) + " – " + fmt(p[1]) + " – " + fmt(p[2]);
+    viewer.addLine({ start:xyz(p[0]), end:xyz(p[1]), color:"#ffd700", linewidth:2 });
+    viewer.addLine({ start:xyz(p[1]), end:xyz(p[2]), color:"#ffd700", linewidth:2 });
+    viewer.addLabel(label, labelOpts(shiftY(p[1], 0.9)));
+
+  } else if (mMode === "dihedral") {
+    val   = dihedral4(p[0], p[1], p[2], p[3]);
+    label = val.toFixed(2) + "°";
+    desc  = [p[0],p[1],p[2],p[3]].map(fmt).join(" – ");
+    for (let i=0; i<3; i++)
+      viewer.addLine({ start:xyz(p[i]), end:xyz(p[i+1]), color:"#ffd700", linewidth:2 });
+    viewer.addLabel(label, labelOpts(shiftY(mid(p[1],p[2]), 0.9)));
+  }
+
+  viewer.render();
+  mList.push({ mode:mMode, label, desc });
+  renderMList();
+  picked = [];
+  updateMStatus();
+}
+
+function renderMList() {
+  const el = document.getElementById("m-list");
+  if (!mList.length) {
+    el.innerHTML = '<div style="color:var(--tx1);font-size:.72rem;">No measurements yet.</div>';
+    return;
+  }
+  el.innerHTML = mList.map(m => `
+    <div class="m-item">
+      <div><span class="m-item-val">${m.label}</span>
+           <span class="m-item-type">${m.mode}</span></div>
+      <div class="m-item-desc">${m.desc}</div>
+    </div>`).join("");
+}
+
+function clearMeasurements() {
+  mList = []; picked = [];
+  renderMList();
+  document.getElementById("m-status").textContent = "";
+  if (curPDB) loadPDB(curPDB);
+}
+
+// ── File load / download ──────────────────────────────────────────────────────
+function loadFile(inp) {
+  const file = inp.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    curPDB = e.target.result;
+    hideEmpty();
+    loadPDB(curPDB);
+    document.getElementById("sb-seq").textContent = file.name;
+    setMsg("Loaded " + file.name, "ok");
+  };
+  reader.readAsText(file);
+  inp.value = "";
+}
+
+function downloadPDB() {
+  if (!curPDB) { alert("No structure loaded."); return; }
+  const seq  = document.getElementById("seq-input").value.trim() || "structure";
+  const name = seq + "_" + state.form + ".pdb";
+  const a    = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([curPDB], {type:"text/plain"})),
+    download: name
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Option buttons ─────────────────────────────────────────────────────────────
+function setOpt(key, val, el) {
+  state[key] = val;
+  el.closest(".opts").querySelectorAll(".opt").forEach(b => b.classList.remove("on"));
+  el.classList.add("on");
+  if (key === "style" || key === "color") { if (curPDB) applyStyle(); }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function hideEmpty() { document.getElementById("empty-state").style.display = "none"; }
+
+function setMsg(msg, cls) {
+  const el = document.getElementById("sb-msg");
+  el.textContent = msg;
+  el.className   = cls;
+}
+
+function fmt(a)  { return `${a.chain}${a.resi}:${a.name}`; }
+function xyz(a)  { return { x:a.x, y:a.y, z:a.z }; }
+function mid(a,b){ return { x:(a.x+b.x)/2, y:(a.y+b.y)/2+.4, z:(a.z+b.z)/2 }; }
+function shiftY(a,dy){ return { x:a.x, y:a.y+dy, z:a.z }; }
+
+function labelOpts(pos) {
+  return { position:pos, backgroundColor:"#0d1117",
+           fontColor:"#ffd700", fontSize:13,
+           borderThickness:1, borderColor:"#ffd700" };
+}
+
+// ── 3D maths ──────────────────────────────────────────────────────────────────
+function dist3(a,b){
+  return Math.sqrt((b.x-a.x)**2+(b.y-a.y)**2+(b.z-a.z)**2);
+}
+
+function angle3(a,b,c){
+  const v1={x:a.x-b.x,y:a.y-b.y,z:a.z-b.z};
+  const v2={x:c.x-b.x,y:c.y-b.y,z:c.z-b.z};
+  const d=v1.x*v2.x+v1.y*v2.y+v1.z*v2.z;
+  const m=Math.sqrt(v1.x**2+v1.y**2+v1.z**2)*Math.sqrt(v2.x**2+v2.y**2+v2.z**2);
+  return Math.acos(Math.max(-1,Math.min(1,d/m)))*180/Math.PI;
+}
+
+function dihedral4(a,b,c,d){
+  function sub(u,v){return{x:u.x-v.x,y:u.y-v.y,z:u.z-v.z};}
+  function crs(u,v){return{x:u.y*v.z-u.z*v.y,y:u.z*v.x-u.x*v.z,z:u.x*v.y-u.y*v.x};}
+  function dot(u,v){return u.x*v.x+u.y*v.y+u.z*v.z;}
+  function nrm(u){const m=Math.sqrt(dot(u,u));return{x:u.x/m,y:u.y/m,z:u.z/m};}
+  const b1=sub(b,a),b2=sub(c,b),b3=sub(d,c);
+  const n1=crs(b1,b2), n2=crs(b2,b3);
+  const m1=crs(n1,nrm(b2));
+  return -Math.atan2(dot(m1,n2), dot(n1,n2)) * 180/Math.PI;
+}
+</script>
+</body>
+</html>

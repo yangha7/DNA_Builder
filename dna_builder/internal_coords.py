@@ -299,13 +299,13 @@ B_CROSS_STRAND = {
     # ref_atom = N1(s1), angle_ref = C2(s1), dihedral_ref = C6(s1)
     "A->T": {
         "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
-        "C1'_dist": 6.115, "C1'_angle": 96.1, "C1'_dihedral": 177.0,
-        "O4'_angle": 109.8, "O4'_dihedral": 98.8,   # from ref_atom-C1'-O4'
-        "C2'_angle": 140.6, "C2'_dihedral": -109.9,  # from ref_atom-C1'-C2'
+        "C1'_dist": 6.115, "C1'_angle": 96.1, "C1'_dihedral": -174.92,
+        "O4'_angle": 109.8, "O4'_dihedral": 98.8,
+        "C2'_angle": 140.6, "C2'_dihedral": -109.9,
     },
     "G->C": {
         "ref_atom": "N1", "angle_ref": "C2", "dihedral_ref": "C6",
-        "C1'_dist": 6.112, "C1'_angle": 95.0, "C1'_dihedral": 177.1,
+        "C1'_dist": 6.112, "C1'_angle": 95.0, "C1'_dihedral": -174.91,
         "O4'_angle": 109.9, "O4'_dihedral": 98.7,
         "C2'_angle": 140.8, "C2'_dihedral": -108.8,
     },
@@ -313,13 +313,13 @@ B_CROSS_STRAND = {
     # ref_atom = N3(s1), angle_ref = C2(s1), dihedral_ref = C4(s1)
     "T->A": {
         "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
-        "C1'_dist": 7.976, "C1'_angle": 108.6, "C1'_dihedral": 176.1,
+        "C1'_dist": 7.976, "C1'_angle": 108.6, "C1'_dihedral": -175.91,
         "O4'_angle": 108.8, "O4'_dihedral": 97.7,
         "C2'_angle": 142.0, "C2'_dihedral": -109.9,
     },
     "C->G": {
         "ref_atom": "N3", "angle_ref": "C2", "dihedral_ref": "C4",
-        "C1'_dist": 7.911, "C1'_angle": 111.4, "C1'_dihedral": 176.2,
+        "C1'_dist": 7.911, "C1'_angle": 111.4, "C1'_dihedral": -175.79,
         "O4'_angle": 108.9, "O4'_dihedral": 97.4,
         "C2'_angle": 142.0, "C2'_dihedral": -109.9,
     },

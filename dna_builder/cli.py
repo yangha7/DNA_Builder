@@ -91,6 +91,13 @@ def main():
              "nucleotide templates; zmatrix (v2, default) builds backbone atom-by-atom "
              "using internal coordinates.",
     )
+    parser.add_argument(
+        "--no-hydrogens",
+        action="store_true",
+        default=False,
+        help="Omit explicit hydrogen atoms (heavy atoms only). "
+             "By default, H atoms are added using standard bond geometry.",
+    )
 
     args = parser.parse_args()
 
@@ -131,6 +138,10 @@ def main():
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    if not args.no_hydrogens:
+        from .hydrogens import add_hydrogens
+        atoms = add_hydrogens(atoms)
 
     print(f"Generated {len(atoms)} atoms", file=sys.stderr)
 
