@@ -158,6 +158,22 @@ def _compute_fingerprint(atoms, sequence: str, form: str) -> dict:
 
 
 if __name__ == "__main__":
+    import signal
+    import subprocess
+
     port = 5052
+
+    # Kill any process already listening on this port
+    try:
+        pids = subprocess.check_output(["lsof", "-ti", f":{port}"],
+                                       stderr=subprocess.DEVNULL).decode().split()
+        for pid in pids:
+            os.kill(int(pid), signal.SIGTERM)
+        if pids:
+            import time; time.sleep(0.4)
+            print(f"Stopped previous server (PID {', '.join(pids)})")
+    except subprocess.CalledProcessError:
+        pass  # nothing was listening
+
     print(f"\nDNA Builder GUI  →  http://localhost:{port}\n")
     app.run(debug=True, port=port, use_reloader=False)
