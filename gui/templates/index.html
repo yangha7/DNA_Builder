@@ -89,6 +89,17 @@ body {
   transition: border-color .15s, color .15s;
 }
 .btn-hdr:hover { border-color: var(--blue); color: var(--blue); }
+.save-fmt {
+  background: var(--bg2);
+  color: var(--tx0);
+  border: 1px solid var(--bd);
+  border-radius: 5px;
+  padding: 5px 6px;
+  font-size: .82rem;
+  cursor: pointer;
+  height: 30px;
+}
+.save-fmt:focus { outline: none; border-color: var(--blue); }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .layout {
@@ -376,8 +387,15 @@ body {
   <div id="seq-err"></div>
   <button class="btn-build" id="build-btn" onclick="doBuild()">▶ Build</button>
   <button class="btn-hdr" onclick="document.getElementById('file-in').click()">📂 Browse</button>
-  <button class="btn-hdr" id="save-btn" onclick="downloadPDB()" disabled title="Build or load a structure first">💾 Save PDB</button>
-  <input id="file-in" type="file" style="display:none" accept=".pdb,.cif,.mmcif" onchange="loadFile(this)">
+  <select id="save-fmt" class="save-fmt" title="Download format">
+    <option value="pdb">PDB</option>
+    <option value="xyz">XYZ</option>
+    <option value="cif">mmCIF</option>
+  </select>
+  <button class="btn-hdr" id="save-btn" onclick="downloadStructure()" disabled title="Build or load a structure first">💾 Save</button>
+  <input id="file-in" type="file" style="display:none"
+         accept=".pdb,.ent,.cif,.mmcif,.xyz,.mol2,.sdf,.mol"
+         onchange="loadFile(this)">
 </div>
 
 <!-- ═══ MAIN ════════════════════════════════════════════════════════════════ -->
@@ -871,31 +889,81 @@ function clearMeasurements() {
 }
 
 // ── File load / download ──────────────────────────────────────────────────────
-function loadFile(inp) {
+// Format map: extension -> 3Dmol format string
+const FMT_3DMOL = {pdb:"pdb", ent:"pdb", cif:"cif", mmcif:"cif",
+                   xyz:"xyz", mol2:"mol2", sdf:"sdf", mol:"sdf"};
+// Formats the server can parse back to PDB
+const FMT_SERVER = new Set(["pdb","ent","cif","mmcif","xyz"]);
+
+async function loadFile(inp) {
   const file = inp.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    curPDB = e.target.result;
-    hideEmpty();
-    loadPDB(curPDB);
-    document.getElementById("sb-seq").textContent = file.name;
-    document.getElementById("save-btn").disabled = false;
-    setMsg("Loaded " + file.name, "ok");
-  };
-  reader.readAsText(file);
   inp.value = "";
+  const ext  = file.name.split(".").pop().toLowerCase();
+  const fmt3 = FMT_3DMOL[ext] || "pdb";
+
+  const content = await file.text();
+
+  // Always display immediately in 3Dmol
+  hideEmpty();
+  viewer.clear();
+  viewer.addModel(content, fmt3, {keepH: true});
+  applyStyle();
+  viewer.zoomTo();
+  viewer.render();
+  document.getElementById("sb-seq").textContent = file.name;
+  document.getElementById("save-btn").disabled = false;
+
+  if (ext === "pdb" || ext === "ent") {
+    curPDB = content;
+    setMsg("Loaded " + file.name, "ok");
+  } else if (FMT_SERVER.has(ext)) {
+    // Convert to PDB server-side so Classify/Fingerprint work
+    setMsg("Converting " + file.name + "…", "ok");
+    try {
+      const r = await fetch("/api/convert", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({content, filename: file.name})
+      });
+      const d = await r.json();
+      if (d.error) { setMsg("⚠ " + d.error, "warn"); curPDB = ""; }
+      else { curPDB = d.pdb; setMsg("Loaded " + file.name, "ok"); }
+    } catch(e) { setMsg("⚠ Conversion failed", "warn"); curPDB = ""; }
+  } else {
+    curPDB = "";   // mol2 / sdf — view only
+    setMsg("Loaded " + file.name + " (view only)", "ok");
+  }
 }
 
-function downloadPDB() {
+async function downloadStructure() {
   if (!curPDB) { alert("No structure loaded."); return; }
+  const fmt  = document.getElementById("save-fmt").value;
   const seq  = document.getElementById("seq-input").value.trim() || "structure";
-  const name = seq + "_" + state.form + ".pdb";
-  const a    = Object.assign(document.createElement("a"), {
-    href: URL.createObjectURL(new Blob([curPDB], {type:"text/plain"})),
-    download: name
+  const base = seq + "_" + state.form;
+
+  if (fmt === "pdb") {
+    _triggerDownload(curPDB, base + ".pdb");
+    return;
+  }
+  try {
+    const r = await fetch("/api/export", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({pdb: curPDB, format: fmt,
+                            title: base.replace(/_/g," ")})
+    });
+    const d = await r.json();
+    if (d.error) { setMsg("⚠ " + d.error, "warn"); return; }
+    _triggerDownload(d.content, base + "." + d.ext);
+  } catch(e) { setMsg("⚠ Export failed", "warn"); }
+}
+
+function _triggerDownload(content, filename) {
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([content], {type:"text/plain"})),
+    download: filename
   });
-  a.click(); URL.revokeObjectURL(a.href);
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ── Option buttons ─────────────────────────────────────────────────────────────

@@ -12,7 +12,8 @@ from flask import Flask, jsonify, render_template, request
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dna_builder.builder import build_dna
 from dna_builder.classifier import classify_structure
-from dna_builder.io_pdb import write_pdb
+from dna_builder.io_pdb import write_pdb, write_xyz, write_mmcif
+from dna_builder.io_parser import parse_structure, detect_format
 from dna_builder.zmatrix_builder import build_dna_v2
 
 app = Flask(__name__)
@@ -67,6 +68,63 @@ def api_build():
 
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/convert", methods=["POST"])
+def api_convert():
+    """Convert an uploaded file (CIF, XYZ, PDB) to PDB string."""
+    data = request.get_json()
+    content = data.get("content", "")
+    filename = data.get("filename", "structure.pdb")
+    if not content:
+        return jsonify({"error": "No file content provided"}), 400
+
+    ext = os.path.splitext(filename)[1].lower() or ".pdb"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False) as fh:
+        fh.write(content)
+        tmp_path = fh.name
+    try:
+        atoms = parse_structure(tmp_path)
+        buf = io.StringIO()
+        write_pdb(atoms, buf, filename)
+        return jsonify({"pdb": buf.getvalue(), "ok": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
+    finally:
+        os.unlink(tmp_path)
+
+
+@app.route("/api/export", methods=["POST"])
+def api_export():
+    """Export current PDB content to a requested format."""
+    data = request.get_json()
+    pdb_content = data.get("pdb", "")
+    fmt = data.get("format", "pdb").lower().strip(".")
+    title = data.get("title", "DNA structure")
+    if not pdb_content:
+        return jsonify({"error": "No structure provided"}), 400
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".pdb", delete=False) as fh:
+        fh.write(pdb_content)
+        tmp_path = fh.name
+    try:
+        from dna_builder.io_parser import parse_pdb
+        atoms = parse_pdb(tmp_path)
+        buf = io.StringIO()
+        if fmt == "xyz":
+            write_xyz(atoms, buf, title)
+            ext = "xyz"
+        elif fmt in ("cif", "mmcif"):
+            write_mmcif(atoms, buf, title)
+            ext = "cif"
+        else:
+            write_pdb(atoms, buf, title)
+            ext = "pdb"
+        return jsonify({"content": buf.getvalue(), "ext": ext, "ok": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
+    finally:
+        os.unlink(tmp_path)
 
 
 @app.route("/api/classify", methods=["POST"])

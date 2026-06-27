@@ -3,11 +3,10 @@ PDB file output for DNA structures.
 
 Writes atoms in standard PDB ATOM record format with proper column alignment,
 chain IDs, residue numbering, and element symbols.
-Also supports XYZ and CML output formats.
+Also supports XYZ, mmCIF, and CML output formats.
 """
 
 from typing import List, TextIO
-import sys
 from .builder import Atom
 
 
@@ -122,3 +121,59 @@ def _write_cml_records(atoms: List[Atom], f: TextIO, title: str):
 
     f.write('  </atomArray>\n')
     f.write('</molecule>\n')
+
+
+def write_mmcif(atoms: List[Atom], output, title: str = "DNA structure"):
+    """Write atoms in mmCIF format (PDBx/mmCIF)."""
+    if isinstance(output, str):
+        with open(output, "w") as f:
+            _write_mmcif_records(atoms, f, title)
+    else:
+        _write_mmcif_records(atoms, output, title)
+
+
+def _cif_name(name: str) -> str:
+    """Quote CIF atom name if it contains special characters (e.g. O5')."""
+    if any(c in name for c in ("'", '"', ' ', '\t')):
+        return f'"{name}"'
+    return name
+
+
+def _write_mmcif_records(atoms: List[Atom], f: TextIO, title: str):
+    """Write mmCIF records to a file object."""
+    safe_title = title.replace("'", "")
+    f.write("data_DNA_BUILDER\n")
+    f.write("#\n")
+    f.write(f"_entry.id                         DNA_BUILDER\n")
+    f.write(f"_struct.title                     '{safe_title}'\n")
+    f.write("#\n")
+    f.write("loop_\n")
+    f.write("_atom_site.group_PDB\n")
+    f.write("_atom_site.id\n")
+    f.write("_atom_site.type_symbol\n")
+    f.write("_atom_site.label_atom_id\n")
+    f.write("_atom_site.label_comp_id\n")
+    f.write("_atom_site.label_asym_id\n")
+    f.write("_atom_site.label_seq_id\n")
+    f.write("_atom_site.Cartn_x\n")
+    f.write("_atom_site.Cartn_y\n")
+    f.write("_atom_site.Cartn_z\n")
+    f.write("_atom_site.occupancy\n")
+    f.write("_atom_site.B_iso_or_equiv\n")
+    f.write("_atom_site.auth_asym_id\n")
+    f.write("_atom_site.auth_seq_id\n")
+    f.write("_atom_site.auth_atom_id\n")
+    f.write("_atom_site.pdbx_PDB_model_num\n")
+
+    for i, atom in enumerate(atoms, 1):
+        name = _cif_name(atom.name)
+        chain = atom.chain_id or "A"
+        f.write(
+            f"ATOM  {i:>6d} {atom.element:>2s} {name:<6s} "
+            f"{atom.residue_name:>3s} {chain:>2s} {atom.residue_seq:>4d} "
+            f"{atom.x:>8.3f} {atom.y:>8.3f} {atom.z:>8.3f} "
+            f"1.00 0.00 "
+            f"{chain:>2s} {atom.residue_seq:>4d} {name:<6s} 1\n"
+        )
+
+    f.write("#\n")
