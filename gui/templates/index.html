@@ -648,17 +648,21 @@ function applyStyle() {
       viewer.setStyle({ resn: res }, colorize(baseStyle, col));
   }
 
-  // Explicit H pass: use absolute radius so 3Dmol's H VDW lookup can't produce zero-size spheres
-  if (s !== "stick") {
+  // Explicit H pass: absolute sphere radius (avoids 3Dmol H VDW issue) + thin sticks
+  {
     const hr = 0.28;
+    const hStyle = (col) => ({
+      ...(s !== "stick"  ? { sphere: { radius: hr, color: col } } : {}),
+      ...(s !== "sphere" ? { stick:  { radius: 0.07, color: col } } : {}),
+    });
     if (c === "chain") {
-      viewer.setStyle({ elem:"H", chain:"A" }, { sphere:{ radius:hr, color:"#7fc3ff" } });
-      viewer.setStyle({ elem:"H", chain:"B" }, { sphere:{ radius:hr, color:"#ffaaaa" } });
+      viewer.setStyle({ elem:"H", chain:"A" }, hStyle("#7fc3ff"));
+      viewer.setStyle({ elem:"H", chain:"B" }, hStyle("#ffaaaa"));
     } else if (c === "element") {
-      viewer.setStyle({ elem:"H" }, { sphere:{ radius:hr, color:"#ffffff" } });
+      viewer.setStyle({ elem:"H" }, hStyle("#ffffff"));
     } else {
       [["DA","#40e0d0"],["DT","#ffa500"],["DG","#90ee90"],["DC","#ff69b4"]].forEach(
-        ([res, col]) => viewer.setStyle({ elem:"H", resn:res }, { sphere:{ radius:hr, color:col } }));
+        ([res, col]) => viewer.setStyle({ elem:"H", resn:res }, hStyle(col)));
     }
   }
 
