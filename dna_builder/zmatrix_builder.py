@@ -903,8 +903,6 @@ def _build_z_dna_v2(sequence: str) -> List[Atom]:
     The backbone is identical for all base types at a given position
     (confirmed: 0.005 Å RMSD). Only the base atoms differ.
     """
-    import warnings
-
     sequence = sequence.upper().strip()
     if not all(b in "ATGC" for b in sequence):
         raise ValueError(f"Invalid bases in sequence: {sequence}")
@@ -927,10 +925,10 @@ def _build_z_dna_v2(sequence: str) -> List[Atom]:
         for i in range(len(sequence))
     )
     if not is_canonical:
-        warnings.warn(
+        raise ValueError(
             f"Z-DNA sequence '{sequence}' does not alternate purine-pyrimidine. "
-            f"Quality may be reduced.",
-            stacklevel=2,
+            f"Z-DNA requires purine at even positions and pyrimidine at odd positions "
+            f"(e.g., GCGCGCGC). Non-canonical sequences produce distorted H-bonds."
         )
 
     n_bp = len(sequence)
@@ -1033,8 +1031,6 @@ def _build_dna_v2(sequence: str, form: str) -> List[Atom]:
 
     For Z-DNA, uses a separate code path with dinucleotide helical screw.
     """
-    import warnings
-
     sequence = sequence.upper().strip()
     if not all(b in "ATGC" for b in sequence):
         raise ValueError(f"Invalid bases in sequence: {sequence}")

@@ -600,7 +600,7 @@ function loadPDB(pdbStr) {
   picked = [];
   renderMList();
 
-  viewer.addModel(pdbStr, "pdb");
+  viewer.addModel(pdbStr, "pdb", { keepH: true });
   applyStyle();
   viewer.zoomTo();
   viewer.render();
@@ -633,7 +633,7 @@ function applyStyle() {
 
   const stickBase   = s === "sphere" ? {} : { stick: { radius: s==="stick" ? 0.15 : 0.11 } };
   const sphereBase  = s === "sphere" ? { sphere: { scale: 0.5 } }
-                    : s === "ballstick" ? { sphere: { scale: 0.40 } } : {};
+                    : s === "ballstick" ? { sphere: { scale: 0.25 } } : {};
   const baseStyle   = Object.assign({}, stickBase, sphereBase);
 
   if (c === "chain") {
@@ -645,6 +645,20 @@ function applyStyle() {
     const rc = { DA:"#40e0d0", DT:"#ffa500", DG:"#90ee90", DC:"#ff69b4" };
     for (const [res, col] of Object.entries(rc))
       viewer.setStyle({ resn: res }, colorize(baseStyle, col));
+  }
+
+  // Explicit H pass: use absolute radius so 3Dmol's H VDW lookup can't produce zero-size spheres
+  if (s !== "stick") {
+    const hr = 0.28;
+    if (c === "chain") {
+      viewer.setStyle({ elem:"H", chain:"A" }, { sphere:{ radius:hr, color:"#7fc3ff" } });
+      viewer.setStyle({ elem:"H", chain:"B" }, { sphere:{ radius:hr, color:"#ffaaaa" } });
+    } else if (c === "element") {
+      viewer.setStyle({ elem:"H" }, { sphere:{ radius:hr, color:"#ffffff" } });
+    } else {
+      [["DA","#40e0d0"],["DT","#ffa500"],["DG","#90ee90"],["DC","#ff69b4"]].forEach(
+        ([res, col]) => viewer.setStyle({ elem:"H", resn:res }, { sphere:{ radius:hr, color:col } }));
+    }
   }
 
   document.getElementById("chain-legend").style.display =
