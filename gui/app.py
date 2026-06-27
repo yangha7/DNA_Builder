@@ -48,8 +48,6 @@ def api_build():
             return jsonify({"error": f"Z-DNA requires a palindromic sequence. '{sequence}' has reverse complement '{rev_comp}'."}), 400
         purines = set("AG")
         is_canonical = all((sequence[i] in purines) == (i % 2 == 0) for i in range(len(sequence)))
-        if not is_canonical:
-            return jsonify({"error": f"Z-DNA sequence '{sequence}' does not alternate purine-pyrimidine. Use a canonical sequence such as GCGCGCGC."}), 400
 
     try:
         atoms = build_dna_v2(sequence, form) if method == "zmatrix" else build_dna(sequence, form, method="template")
@@ -62,7 +60,10 @@ def api_build():
         pdb_str = buf.getvalue()
 
         fingerprint = _compute_fingerprint(atoms, sequence, form)
-        return jsonify({"pdb": pdb_str, "fingerprint": fingerprint, "ok": True})
+        warn = None
+        if form == "Z" and not is_canonical:
+            warn = f"'{sequence}' does not alternate purine-pyrimidine — structure quality may be reduced."
+        return jsonify({"pdb": pdb_str, "fingerprint": fingerprint, "ok": True, "warning": warn})
 
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

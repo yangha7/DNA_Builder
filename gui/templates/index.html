@@ -346,8 +346,9 @@ body {
 }
 .statusbar span { color: var(--tx0); margin-left: 3px; }
 #sb-msg { margin-left: auto; }
-#sb-msg.ok  { color: var(--green); }
-#sb-msg.err { color: var(--red); }
+#sb-msg.ok   { color: var(--green); }
+#sb-msg.err  { color: var(--red); }
+#sb-msg.warn { color: var(--orange); }
 
 /* Spinner */
 .spin {
@@ -584,7 +585,7 @@ async function doBuild() {
     document.getElementById("sb-seq").textContent   = "5'-" + seq + "-3'";
     document.getElementById("sb-atoms").textContent = na;
     document.getElementById("sb-bp").textContent    = seq.length;
-    setMsg("Built successfully", "ok");
+    setMsg(data.warning ? "⚠ " + data.warning : "Built successfully", data.warning ? "warn" : "ok");
 
   } catch (e) { setMsg("Network error: " + e.message, "err"); }
   finally {

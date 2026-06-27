@@ -20,6 +20,7 @@ Charge model:
 """
 
 import numpy as np
+import warnings
 from typing import List, Optional
 from .fiber_data import (
     HELICAL_PARAMS, WC_COMPLEMENT, RESIDUE_NAMES,
@@ -336,10 +337,10 @@ def build_z_dna(sequence: str) -> List[Atom]:
         for i in range(len(sequence))
     )
     if not is_canonical:
-        raise ValueError(
+        warnings.warn(
             f"Z-DNA sequence '{sequence}' does not alternate purine-pyrimidine. "
-            f"Z-DNA requires purine at even positions and pyrimidine at odd positions "
-            f"(e.g., GCGCGCGC). Non-canonical sequences produce distorted H-bonds."
+            "Non-canonical Z-DNA may have distorted backbone geometry.",
+            stacklevel=2,
         )
 
     params = HELICAL_PARAMS["Z"]

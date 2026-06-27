@@ -16,6 +16,7 @@ Internal coordinates are extracted from Colin's 3DNA fiber structures
 """
 
 import numpy as np
+import warnings
 from typing import List, Dict, Optional, Tuple
 from .builder import Atom
 from .internal_coords import (
@@ -925,10 +926,10 @@ def _build_z_dna_v2(sequence: str) -> List[Atom]:
         for i in range(len(sequence))
     )
     if not is_canonical:
-        raise ValueError(
+        warnings.warn(
             f"Z-DNA sequence '{sequence}' does not alternate purine-pyrimidine. "
-            f"Z-DNA requires purine at even positions and pyrimidine at odd positions "
-            f"(e.g., GCGCGCGC). Non-canonical sequences produce distorted H-bonds."
+            "Non-canonical Z-DNA may have reduced quality.",
+            stacklevel=2,
         )
 
     n_bp = len(sequence)
