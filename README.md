@@ -12,6 +12,55 @@ A Python tool for generating accurate A-, B-, and Z-form double-stranded DNA str
 - **Multiple formats**: PDB, XYZ, CML for output; PDB, mmCIF, XYZ for input
 - **Batch-friendly**: Command-line interface for scripting
 
+## GUI
+
+A browser-based graphical interface is included for interactive building, visualization, and analysis.
+
+### Launch
+
+```bash
+cd gui
+pip install flask numpy
+python app.py
+# Open http://localhost:5052
+```
+
+### Overview
+
+<!-- Screenshot: full GUI with a B-DNA structure loaded -->
+![DNA Builder GUI](docs/screenshots/gui_overview.png)
+
+The GUI has three main areas: a sequence/form input panel on the left, an interactive 3D viewer in the center, and a helical parameters sidebar on the right.
+
+### Building Structures
+
+Enter a nucleotide sequence, choose A/B/Z form, and click **Build**. The 3D structure appears immediately. Color the atoms by chain, element, or residue using the **Color By** dropdown.
+
+<!-- Screenshot: Build panel with sequence input and form selector -->
+![Build panel](docs/screenshots/gui_builder.png)
+
+### Conformation Classifier
+
+Click **Classify** to run the A/B/Z classifier on the currently loaded structure. Results appear in the sidebar with RMSD scores for each form, confidence level, and key helical parameters (rise, twist, inclination, propeller twist, sugar pucker ν₂).
+
+<!-- Screenshot: classifier output in sidebar showing B-DNA classification -->
+![Classifier output](docs/screenshots/gui_classifier.png)
+
+### Helical Parameter Visualization
+
+After classifying, click any row in the helical parameters table to draw an interactive 3D overlay showing what that parameter means geometrically — rise arrows between base pairs, twist arcs, propeller angle between the two base planes, helix axis cylinder, and so on.
+
+<!-- Screenshot: helical parameter viz with twist arc drawn on the structure -->
+![Helical parameter visualization](docs/screenshots/gui_helical_viz.png)
+
+### Measurements and Fingerprint
+
+Use the **Distance** tool to click any two atoms and read off the distance. The **Fingerprint** tab displays the P–P and C1'–C1' inter-strand distance profiles, which are characteristic signatures of each DNA form.
+
+### File I/O
+
+Load existing structures via **Import** (PDB, mmCIF/CIF, XYZ supported, including AlphaFold3 output). Export the current structure as PDB, XYZ, or mmCIF with the **Download** button.
+
 ## Installation
 
 Requires Python 3.7+ and NumPy.
@@ -164,7 +213,14 @@ dna_builder/
 ├── cli.py           # Command-line interface (build + classify modes)
 ├── fiber_data.py    # Nucleotide templates and helical parameters
 ├── io_parser.py     # Input parsers (PDB, mmCIF, XYZ)
-└── io_pdb.py        # Output writers (PDB, XYZ, CML)
+├── io_pdb.py        # Output writers (PDB, XYZ, CML)
+└── zmatrix_builder.py  # Z-matrix based builder (default)
+gui/
+├── app.py           # Flask backend and API routes
+└── templates/
+    └── index.html   # Single-page frontend (3Dmol.js viewer)
+docs/
+└── screenshots/     # GUI screenshots referenced in this README
 ```
 
 ## References
