@@ -132,11 +132,21 @@ def api_export():
 def api_classify():
     data = request.get_json()
     pdb_content = data.get("pdb", "")
-    if not pdb_content:
+    raw_content = data.get("content", "")
+    raw_filename = data.get("filename", "structure.cif")
+
+    if pdb_content:
+        suffix = ".pdb"
+        file_content = pdb_content
+    elif raw_content:
+        ext = os.path.splitext(raw_filename)[1].lower() or ".cif"
+        suffix = ext
+        file_content = raw_content
+    else:
         return jsonify({"error": "No structure loaded"}), 400
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".pdb", delete=False) as fh:
-        fh.write(pdb_content)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as fh:
+        fh.write(file_content)
         tmp_path = fh.name
     try:
         result = classify_structure(tmp_path)

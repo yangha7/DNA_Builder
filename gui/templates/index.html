@@ -536,7 +536,9 @@ body {
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 let viewer = null;
-let curPDB  = "";
+let curPDB      = "";
+let curContent  = "";   // raw uploaded file content (CIF/XYZ)
+let curFilename = "";   // original uploaded filename
 let curFP   = null;
 let state   = { form:"B", method:"zmatrix", style:"ballstick", color:"element", hydrogens:"yes" };
 
@@ -777,16 +779,20 @@ function updateFP(fp) {
 
 // ── Classify ──────────────────────────────────────────────────────────────────
 async function doClassify() {
-  if (!curPDB) { alert("No structure loaded. Build or load a PDB first."); return; }
+  if (!curPDB && !curContent) { alert("No structure loaded. Build or load a structure first."); return; }
   const box = document.getElementById("cls-box");
   box.style.display = "block";
   box.innerHTML = '<span class="spin"></span>Classifying…';
+
+  const payload = curPDB
+    ? { pdb: curPDB }
+    : { content: curContent, filename: curFilename };
 
   try {
     const res  = await fetch("/api/classify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pdb: curPDB }),
+      body: JSON.stringify(payload),
     });
     const d = await res.json();
     if (d.error) { box.innerHTML = `<span style="color:var(--red)">${d.error}</span>`; return; }
@@ -1086,11 +1092,16 @@ async function loadFile(inp) {
   document.getElementById("sb-seq").textContent = file.name;
   document.getElementById("save-btn").disabled = false;
 
+  // Keep raw content so classify can use it directly if PDB conversion fails
+  curContent  = content;
+  curFilename = file.name;
+  curPDB      = "";
+
   if (ext === "pdb" || ext === "ent") {
     curPDB = content;
     setMsg("Loaded " + file.name, "ok");
   } else if (FMT_SERVER.has(ext)) {
-    // Convert to PDB server-side so Classify/Fingerprint work
+    // Convert to PDB server-side so Classify/Fingerprint/Save work
     setMsg("Converting " + file.name + "…", "ok");
     try {
       const r = await fetch("/api/convert", {
@@ -1098,11 +1109,18 @@ async function loadFile(inp) {
         body: JSON.stringify({content, filename: file.name})
       });
       const d = await r.json();
-      if (d.error) { setMsg("⚠ " + d.error, "warn"); curPDB = ""; }
-      else { curPDB = d.pdb; setMsg("Loaded " + file.name, "ok"); }
-    } catch(e) { setMsg("⚠ Conversion failed", "warn"); curPDB = ""; }
+      if (d.error) {
+        setMsg("⚠ " + d.error + " (classify will use raw file)", "warn");
+      } else {
+        curPDB = d.pdb;
+        setMsg("Loaded " + file.name, "ok");
+      }
+    } catch(e) {
+      setMsg("⚠ Conversion failed — classify will use raw file", "warn");
+    }
   } else {
-    curPDB = "";   // mol2 / sdf — view only
+    curContent  = "";   // mol2 / sdf — not classifiable
+    curFilename = "";
     setMsg("Loaded " + file.name + " (view only)", "ok");
   }
 }
