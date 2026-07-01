@@ -21,6 +21,7 @@ from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 
 from .builder import Atom, build_dna
+from .zmatrix_builder import build_dna_v2
 from .io_parser import parse_structure, extract_sequence_from_atoms, detect_format
 from .fiber_data import HELICAL_PARAMS, WC_COMPLEMENT, BASE_RING_ATOMS
 
@@ -42,8 +43,9 @@ _CANONICAL_HELICAL: Dict[str, Dict[str, float]] = {
 # Within-form standard deviations used to normalise deviations for the
 # helical penalty.  These are larger than ideal-model spreads to accommodate
 # the natural variability of real (non-ideal) structures.
-_SIGMA_RISE = 0.40   # Å
-_SIGMA_NU2  = 8.0    # °  (ν₂ torsion)
+_SIGMA_RISE  = 0.40   # Å
+_SIGMA_NU2   = 8.0    # °  (ν₂ torsion)
+_SIGMA_TWIST = 3.0    # °  (twist/bp); generous to accommodate sequence-specific variation
 
 # 1 σ combined deviation contributes this many Å to the classification score.
 _HELICAL_SCALE  = 0.5   # Å per σ unit
@@ -89,15 +91,18 @@ def _kabsch_rmsd(P: np.ndarray, Q: np.ndarray) -> Tuple[float, np.ndarray, np.nd
     # SVD
     U, S, Vt = np.linalg.svd(H)
 
-    # Correct for reflection
+    # Correct for reflection: np.sign(0)==0 degenerates R, use copysign instead
     d = np.linalg.det(Vt.T @ U.T)
-    sign_matrix = np.diag([1, 1, np.sign(d)])
+    sign_matrix = np.diag([1.0, 1.0, np.copysign(1.0, d)])
 
     # Optimal rotation
     R = Vt.T @ sign_matrix @ U.T
 
-    # Apply rotation and compute RMSD
-    P_rotated = (R @ P_centered.T).T
+    # Apply rotation and compute RMSD.  The large coordinate spreads of DNA can
+    # trigger spurious numpy overflow/divide-by-zero warnings in the BLAS
+    # matmul; suppress them — the result is always finite and correct.
+    with np.errstate(divide='ignore', over='ignore', invalid='ignore'):
+        P_rotated = (R @ P_centered.T).T
     diff = P_rotated - Q_centered
     rmsd = np.sqrt((diff ** 2).sum() / n)
 
@@ -631,6 +636,10 @@ def _helical_penalty(helical: Dict, form: str) -> float:
     if nu2 is not None:
         terms.append(((nu2 - canonical['nu2']) / _SIGMA_NU2) ** 2)
 
+    twist = helical.get('twist')
+    if twist is not None and canonical.get('twist') is not None:
+        terms.append(((twist - canonical['twist']) / _SIGMA_TWIST) ** 2)
+
     if not terms:
         return 0.0
 
@@ -780,11 +789,15 @@ def classify_structure(filepath: str, verbose: bool = True,
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
+                # Use the z-matrix builder (v2) — same as the GUI default
+                ref_models[form] = build_dna_v2(sequence, form)
+        except Exception:
+            try:
                 ref_models[form] = build_dna(sequence, form)
-        except ValueError as e:
-            if verbose:
-                print(f"  Note: Cannot build {form}-DNA for this sequence: {e}",
-                      file=sys.stderr)
+            except ValueError as e:
+                if verbose:
+                    print(f"  Note: Cannot build {form}-DNA for this sequence: {e}",
+                          file=sys.stderr)
 
     if not ref_models:
         raise ValueError("Could not build any reference models for the sequence")
@@ -794,6 +807,9 @@ def classify_structure(filepath: str, verbose: bool = True,
     n_matched: Dict[str, int] = {}
 
     primary_chain = chain_ids[0] if chain_ids else 'A'
+    # Use all chains present in the input for a full double-helix comparison;
+    # fall back to primary chain only if multi-chain matching produces too few atoms.
+    match_chain = None if len(chain_ids) > 1 else primary_chain
 
     for form, ref_atoms in ref_models.items():
         if is_xyz:
@@ -801,11 +817,16 @@ def classify_structure(filepath: str, verbose: bool = True,
             inp_coords, ref_coords, matched = _match_atoms_by_element_proximity(
                 input_atoms, ref_atoms)
         else:
-            # PDB/CIF: try direct matching by (chain, seq, name)
+            # PDB/CIF: try direct matching by (chain, seq, name) across all chains
             inp_coords, ref_coords, matched = _match_atoms_by_identity(
-                input_atoms, ref_atoms, chain=primary_chain)
+                input_atoms, ref_atoms, chain=match_chain)
 
-            # If direct matching fails, try residue-offset matching
+            # If all-chain matching fails, retry on primary chain only
+            if matched < 5:
+                inp_coords, ref_coords, matched = _match_atoms_by_identity(
+                    input_atoms, ref_atoms, chain=primary_chain)
+
+            # Last resort: residue-offset matching
             if matched < 5:
                 inp_coords, ref_coords, matched = _match_atoms_by_residue_offset(
                     input_atoms, ref_atoms, chain=primary_chain)
